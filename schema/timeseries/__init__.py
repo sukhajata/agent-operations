@@ -47,12 +47,16 @@ async def run_migrations(client: ArcadeDBClientProtocol, database: str) -> None:
         logger.info(f"Running migration: {migration_file.name}")
         sql_content = migration_file.read_text()
 
-        # Split into individual statements (skip empty lines and comments)
-        statements = [
-            stmt.strip()
-            for stmt in sql_content.split(";")
-            if stmt.strip() and not stmt.strip().startswith("--")
-        ]
+        # Split into individual statements (strip comment lines before splitting/executing)
+        statements: list[str] = []
+        for chunk in sql_content.split(";"):
+            cleaned = "\n".join(
+                line
+                for line in chunk.splitlines()
+                if line.strip() and not line.strip().startswith("--")
+            ).strip()
+            if cleaned:
+                statements.append(cleaned)
 
         for statement in statements:
             try:
