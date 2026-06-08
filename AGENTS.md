@@ -45,6 +45,7 @@ All changes must pass:
 
 Ensure that the README.md is up to date with the current state of the repo.
 
-## 8. Code quality
+## 8. Task management
 
-Use the python-expert-best-practices-code-review skill to check your changes. Refactor as needed.
+If using a plan or tasks document, be sure to mark completed tasks as completed.
+
