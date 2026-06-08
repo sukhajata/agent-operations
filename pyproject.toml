@@ -1,7 +1,7 @@
 [project]
 name = "agent-operations"
 version = "0.1.0"
-description = "Nous — an agent platform implementing the ExO 3.0 Intelligence Stack"
+description = "Agent Operations — an agent platform implementing the ExO 3.0 Intelligence Stack"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
@@ -10,6 +10,7 @@ dependencies = [
     "openai>=1.0",
     "httpx>=0.27",
     "pydantic>=2",
+    "pydantic-settings>=2",
     "langfuse>=2",
     "prometheus-client>=0.21",
     "presidio-analyzer>=2",
@@ -24,3 +25,9 @@ dev = [
     "pytest-cov>=6",
     "pytest-asyncio>=0.24",
 ]
+
+[tool.uv]
+package = true
+
+[tool.setuptools.packages.find]
+include = ["agents*", "shared*", "schema*", "config*"]

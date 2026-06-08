@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "python-expert-best-practices-code-review": {
+      "source": "wispbit-ai/skills",
+      "sourceType": "github",
+      "skillPath": "skills/python-expert-best-practices-code-review/SKILL.md",
+      "computedHash": "d9acfe21c5b56c6b6cadebd375797deb97f0cc0a0b35cf0a6fa5f37fd03a7b86"
+    }
+  }
+}

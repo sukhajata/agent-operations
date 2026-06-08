@@ -2,7 +2,7 @@
 
 ## 1. Repository Purpose
 
-Nous is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. It is not a product. No project-specific code belongs in this repository. All code must be generic, configurable, and free of hardcoded project names, domains, or credentials.
+Agent Operations is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. It is not a product. No project-specific code belongs in this repository. All code must be generic, configurable, and free of hardcoded project names, domains, or credentials.
 
 ## 2. Directory Map
 
@@ -17,17 +17,8 @@ Nous is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. I
 
 ## 3. Autonomous Modification Rules
 
-Agents **MAY** modify:
-- `agents/`
-- `shared/`
-- `tests/unit/`
-- `tests/agent/`
-
-Agents **MUST NOT** autonomously modify:
-- `schema/migrations/` — human review required for all migrations
-- `config/schema/` — configuration API is a public contract
-- `infra/` — infrastructure changes require human approval
-- `AGENTS.md` — this file
+Agents **MAY** modify all directories in this repository except:
+- `guardrails/` — guardrail profiles and ensemble logic require human approval
 
 ## 4. Event Schema Contract
 
@@ -43,7 +34,17 @@ This repository has its own ACAP. Agents working here may not make external netw
 
 ## 6. Test Requirement
 
+Ensure to write tests for new code which is testable.
+
 All changes must pass:
 - `ruff check .`
 - `mypy --strict .`
 - `pytest tests/unit/` with 80% coverage on modified modules
+
+## 7. Documentation Requirements
+
+Ensure that the README.md is up to date with the current state of the repo.
+
+## 8. Code quality
+
+Use the python-expert-best-practices-code-review skill to check your changes. Refactor as needed.
