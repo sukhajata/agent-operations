@@ -2,7 +2,7 @@
 
 ## 1. Repository Purpose
 
-Nous is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. It is not a product. No project-specific code belongs in this repository. All code must be generic, configurable, and free of hardcoded project names, domains, or credentials.
+Agent Operations is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. It is not a product. No project-specific code belongs in this repository. All code must be generic, configurable, and free of hardcoded project names, domains, or credentials.
 
 ## 2. Directory Map
 
@@ -17,17 +17,8 @@ Nous is a reusable agent platform implementing the ExO 3.0 Intelligence Stack. I
 
 ## 3. Autonomous Modification Rules
 
-Agents **MAY** modify:
-- `agents/`
-- `shared/`
-- `tests/unit/`
-- `tests/agent/`
-
-Agents **MUST NOT** autonomously modify:
-- `schema/migrations/` — human review required for all migrations
-- `config/schema/` — configuration API is a public contract
-- `infra/` — infrastructure changes require human approval
-- `AGENTS.md` — this file
+Agents **MAY** modify all directories in this repository except:
+- `guardrails/` — guardrail profiles and ensemble logic require human approval
 
 ## 4. Event Schema Contract
 
