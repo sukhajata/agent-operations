@@ -34,7 +34,17 @@ This repository has its own ACAP. Agents working here may not make external netw
 
 ## 6. Test Requirement
 
+Ensure to write tests for new code which is testable.
+
 All changes must pass:
 - `ruff check .`
 - `mypy --strict .`
 - `pytest tests/unit/` with 80% coverage on modified modules
+
+## 7. Documentation Requirements
+
+Ensure that the README.md is up to date with the current state of the repo.
+
+## 8. Code quality
+
+Use the python-expert-best-practices-code-review skill to check your changes. Refactor as needed.

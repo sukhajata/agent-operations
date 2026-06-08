@@ -5,8 +5,11 @@ All migration SQL uses CREATE TYPE IF NOT EXISTS and CREATE PROPERTY IF NOT EXIS
 making the runner safe to execute multiple times.
 """
 
+import logging
 from pathlib import Path
 from typing import Any, Protocol
+
+logger = logging.getLogger(__name__)
 
 
 class ArcadeDBClientProtocol(Protocol):
@@ -25,11 +28,23 @@ async def run_migrations(client: ArcadeDBClientProtocol, database: str) -> None:
         client: ArcadeDB client instance
         database: Database name to run migrations against
 
+    Raises:
+        FileNotFoundError: If migrations directory doesn't exist
+        Exception: If any migration statement fails
+
     The migrations are idempotent - safe to run multiple times.
     """
+    if not MIGRATIONS_DIR.exists():
+        raise FileNotFoundError(f"Migrations directory not found: {MIGRATIONS_DIR}")
+
     migration_files = sorted(MIGRATIONS_DIR.glob("*.sql"))
 
+    if not migration_files:
+        logger.info("No TimeSeries migrations found")
+        return
+
     for migration_file in migration_files:
+        logger.info(f"Running migration: {migration_file.name}")
         sql_content = migration_file.read_text()
 
         # Split into individual statements (skip empty lines and comments)
@@ -40,4 +55,9 @@ async def run_migrations(client: ArcadeDBClientProtocol, database: str) -> None:
         ]
 
         for statement in statements:
-            await client.execute_command(database, statement)
+            try:
+                await client.execute_command(database, statement)
+            except Exception as e:
+                logger.error(f"Migration failed: {migration_file.name}")
+                logger.error(f"Statement: {statement}")
+                raise

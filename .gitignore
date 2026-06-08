@@ -10,3 +10,5 @@ wheels/
 .mypy_cache/
 .ruff_cache/
 secrets/
+.pytest_cache/
+.nwave/
