@@ -33,13 +33,14 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 | A | Repository Scaffold | TASK-01 to TASK-03 |
 | B | ArcadeDB Schema | TASK-04 to TASK-07 |
 | C | Shared Libraries | TASK-08 to TASK-13 |
-| D | Agent Implementations | TASK-14 to TASK-17 |
-| E | Orchestration and Subagents | TASK-18 to TASK-20 |
-| F | Guardrails | TASK-21 |
-| G | Observability | TASK-22 to TASK-23 |
-| H | Tests | TASK-24 to TASK-27 |
-| I | CI/CD and Deployment | TASK-28 to TASK-30 |
-| J | Reference Configuration | TASK-31 to TASK-32 |
+| D | Agent Implementations | TASK-14 to TASK-19 |
+| E | Orchestration and Subagents | TASK-20 to TASK-22 |
+| F | Human Approval UI | TASK-23 |
+| G | Guardrails | TASK-24 |
+| H | Observability | TASK-25 to TASK-26 |
+| I | Tests | TASK-27 to TASK-30 |
+| J | CI/CD and Deployment | TASK-31 to TASK-33 |
+| K | Reference Configuration | TASK-34 to TASK-35 |
 
 ---
 
@@ -70,6 +71,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    - `agents/exploratory/`
    - `agents/verification/`
    - `agents/objective/`
+   - `agents/implementation/`
    - `agents/orchestration/`
    - `shared/event_schemas/`
    - `shared/acap/`
@@ -637,9 +639,111 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-## Phase F — Guardrails
+### TASK-19: Build implementation agent
 
-### TASK-21: Build guardrail ensemble
+**Inputs:**
+- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
+- TASK-16 objective agent complete
+
+**Outputs:**
+- `agents/implementation/__init__.py`
+- `agents/implementation/graph.py`
+- `agents/implementation/nodes.py`
+- `agents/implementation/state.py`
+
+**Steps:**
+
+1. Create `agents/implementation/state.py` with `ImplementationState` TypedDict: `objective` (`ObjectiveRecord`), `mtp_version` (str), `agent_id` (str), `plan` (str), `checkpoint` (`CognitiveCheckpoint`), `actions_taken` (list[str]), `files_modified` (list[str]), `test_results` (dict[str, Any] | None), `status` (Literal['in_progress', 'complete', 'failed']).
+2. Create `agents/implementation/nodes.py` with async node functions:
+   - `load_plan(state)` reads the execution plan from the objective's cognitive checkpoint
+   - `execute_plan(state)` uses OpenRouter `IMPLEMENTATION` role to execute the plan step-by-step, emitting `AgentAction` events for each file operation and tool usage
+   - `run_tests(state)` executes test suite and captures results
+   - `update_objective(state)` marks objective as `complete` on success or `stalled` on failure, writes final checkpoint
+   - `promote_findings(state)` calls `promote_findings()` for durable findings discovered during implementation
+3. Create `agents/implementation/graph.py` composing the nodes into a LangGraph `StateGraph`: `load_plan` → `execute_plan` → `run_tests` → `update_objective` → `promote_findings` → `END`. Compile with `PostgresSaver` checkpointer.
+4. The `execute_plan` node must enforce ACAP boundaries on all file operations and tool usage. Add a test that attempts an unpermitted operation and verifies `ACAPViolationError` is raised.
+5. Entry point: `run_implementation_agent(config_path: str, objective_id: str) -> None` that loads config, builds the graph, and invokes it.
+6. The implementation agent must only process objectives with `implementation_status='approved'` and `implementation_state` in `['to_do', 'pending']`. Add validation at graph entry.
+
+**Done when:**
+- Graph compiles without error
+- `execute_plan` node enforces ACAP boundaries on all operations
+- Implementation agent only processes approved objectives
+- All file operations are logged as `AgentAction` events
+- On completion, objective status is updated to `complete`
+- On failure, checkpoint is written and objective is marked `stalled`
+- mypy strict passes
+
+---
+
+## Phase E — Orchestration and Subagents
+
+### TASK-20: Update orchestration agent for human approval workflow
+
+**Inputs:**
+- TASK-18 orchestration agent complete
+- TASK-19 implementation agent complete
+- REQ-HR-01 human gate requirement
+
+**Outputs:**
+- `agents/orchestration/nodes.py` (update)
+- `agents/orchestration/graph.py` (update)
+
+**Steps:**
+
+1. Update `agents/orchestration/nodes.py` to add:
+   - `mark_for_approval(state)` sets `implementation_status='pending_approval'` and `implementation_state='to_do'` on completed objectives
+   - `spawn_implementation(state)` spawns implementation agent for objectives with `implementation_status='approved'` and `implementation_state='to_do'`
+2. Update `agents/orchestration/graph.py` to add conditional edge after `trigger_promotion`: if objective has execution plan → `mark_for_approval` → `check_human_queue` → conditional edge (if approved objective exists → `spawn_implementation`) → `escalate` → `END`.
+3. The orchestration agent must poll for approved objectives and spawn implementation agents accordingly.
+
+**Done when:**
+- Orchestration agent marks completed objectives as `pending_approval`
+- Orchestration agent spawns implementation agents for approved objectives
+- Graph compiles with new approval workflow nodes
+- mypy strict passes
+
+---
+
+## Phase F — Human Approval UI
+
+### TASK-23: Build human approval UI with CopilotKit
+
+**Inputs:**
+- TASK-20 orchestration agent with approval workflow complete
+- REQ-HR-01 human gate requirement
+- CopilotKit framework
+
+**Outputs:**
+- `ui/` directory with CopilotKit-based React application
+- `ui/package.json`
+- `ui/src/components/ApprovalQueue.tsx`
+- `ui/src/components/ApprovalCard.tsx`
+- `ui/src/api/arcadedb.ts`
+
+**Steps:**
+
+1. Create `ui/` directory with a CopilotKit-based React application for human approval workflow.
+2. Create `ui/package.json` with dependencies: `react`, `@copilotkit/react-core`, `@copilotkit/react-ui`, `axios`.
+3. Create `ui/src/api/arcadedb.ts` with functions to query ArcadeDB for objectives with `implementation_status='pending_approval'` and to update approval decisions.
+4. Create `ui/src/components/ApprovalQueue.tsx` that displays a list of pending approval items with plan details, context, and approve/reject/defer buttons.
+5. Create `ui/src/components/ApprovalCard.tsx` that renders a single approval item with: objective domain, execution plan summary, research context, approve/reject/defer buttons with optional comments.
+6. Implement approval workflow: when human approves, update objective with `implementation_status='approved'`, `approval_metadata` (reviewer_id, approved_at, comments). When human rejects, update with `implementation_status='rejected'`. When human defers, update with `implementation_status='deferred'`.
+7. Add authentication and reviewer identity tracking (integrate with existing auth system or add simple username/password for v1).
+
+**Done when:**
+- UI displays pending approval items with plan details and context
+- Human can approve, reject, or defer with optional comments
+- Approval decision is stored in ArcadeDB objective registry
+- Implementation agent only processes approved objectives
+- UI is built with CopilotKit and provides clear approval workflow
+- README includes instructions for running the UI locally
+
+---
+
+## Phase G — Guardrails
+
+### TASK-24: Build guardrail ensemble
 
 **Inputs:**
 - WildGuard, Granite Guardian, ShieldGemma model access (via hosted API or HuggingFace)
@@ -676,9 +780,9 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-## Phase G — Observability
+## Phase H — Observability
 
-### TASK-22: Configure Langfuse OpenTelemetry export
+### TASK-25: Configure Langfuse OpenTelemetry export
 
 **Inputs:**
 - Langfuse Cloud account and API keys in environment
@@ -702,7 +806,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-23: Configure Prometheus custom metrics
+### TASK-26: Configure Prometheus custom metrics
 
 **Inputs:**
 - `prometheus-client` library
@@ -729,9 +833,9 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-## Phase H — Tests
+## Phase I — Tests
 
-### TASK-24: Write unit tests for shared libraries
+### TASK-27: Write unit tests for shared libraries
 
 **Inputs:**
 - TASK-08 through TASK-13 complete
@@ -762,7 +866,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-25: Write integration tests
+### TASK-28: Write integration tests
 
 **Inputs:**
 - Docker installed
@@ -793,7 +897,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-26: Write prompt regression tests
+### TASK-29: Write prompt regression tests
 
 **Inputs:**
 - TASK-14, TASK-15, TASK-16 complete
@@ -821,7 +925,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-27: Write ACAP boundary and secret scanning tests
+### TASK-30: Write ACAP boundary and secret scanning tests
 
 **Inputs:**
 - TASK-10, TASK-14 through TASK-18 complete
@@ -843,9 +947,9 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-## Phase I — CI/CD and Deployment
+## Phase J — CI/CD and Deployment
 
-### TASK-28: Configure GitHub Actions CI pipeline
+### TASK-31: Configure GitHub Actions CI pipeline
 
 **Inputs:**
 - All previous tasks complete
@@ -883,7 +987,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-29: Configure Render deployment
+### TASK-32: Configure Render deployment
 
 **Inputs:**
 - Render account with API access
@@ -902,7 +1006,9 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    1. **arcadedb**: `type=private_service`, `image=arcadedata/arcadedb:latest`, `disk={name=arcadedb-data, mountPath=/arcadedb-data, sizeGB=50}`, `envVars=[JAVA_OPTS with password config]`
    2. **postgres**: `type=pserv` (managed Postgres), `plan=starter`, `databaseName=agent-operations`
    3. **orchestration**: `type=worker`, `buildCommand='uv sync'`, `startCommand='python -m agents.orchestration'`, `plan=starter`, `envVars=[all required secrets as references]`
-   4. **exploratory-{mandate_name}**: `type=cron`, `schedule='0/30 * * * *'`, `buildCommand='uv sync'`, `startCommand='python -m agents.exploratory --mandate={mandate_name}'`, `plan=starter` for each configured mandate
+   4. **implementation**: `type=worker`, `buildCommand='uv sync'`, `startCommand='python -m agents.implementation'`, `plan=starter`, `envVars=[all required secrets as references]`
+   5. **approval-ui**: `type=web`, `buildCommand='cd ui && npm install && npm run build'`, `startCommand='cd ui && npm start'`, `plan=starter`, `envVars=[ARCADEDB_URL, ARCADEDB_USER, ARCADEDB_PASSWORD]`
+   6. **exploratory-{mandate_name}**: `type=cron`, `schedule='0/30 * * * *'`, `buildCommand='uv sync'`, `startCommand='python -m agents.exploratory --mandate={mandate_name}'`, `plan=starter` for each configured mandate
 2. All services must be in the same region. Set via `RENDER_REGION` env var, default to `oregon`.
 3. Create a Makefile with targets:
    - `make deploy-all` (triggers full Render Blueprint sync)
@@ -916,10 +1022,10 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-30: Write deployment and operations runbook
+### TASK-33: Write deployment and operations runbook
 
 **Inputs:**
-- TASK-28, TASK-29 complete
+- TASK-31, TASK-32 complete
 
 **Outputs:**
 - `docs/runbook.md`
@@ -932,19 +1038,23 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    3. **Running schema migrations** — when and how
    4. **Monitoring** — where to find Langfuse traces, how to check Prometheus metrics, where to see Render service logs
    5. **Adding a new exploratory mandate** — YAML structure, where to add it, how to deploy
-   6. **Escalation queue** — where human review items appear, how to action them
-   7. **Common failure modes** — ArcadeDB connection failures, OpenRouter rate limits, checkpoint write failures — with diagnosis steps and remediation
+   6. **Human approval workflow** — how to access the approval UI, review pending objectives, approve/reject/defer implementation tasks, track approval history
+   7. **Implementation agent operations** — how implementation agents are spawned, what they do, how to monitor their progress, how to handle failures
+   8. **Escalation queue** — where human review items appear, how to action them
+   9. **Common failure modes** — ArcadeDB connection failures, OpenRouter rate limits, checkpoint write failures, implementation agent failures — with diagnosis steps and remediation
 
 **Done when:**
 - Runbook exists at `docs/runbook.md`
 - Required secrets table is complete and matches `.env.example`
+- Human approval workflow section explains how to access UI, review objectives, and approve/reject/defer tasks
+- Implementation agent operations section explains spawning, monitoring, and failure handling
 - Escalation queue section explains where items appear and how a human acts on them
 
 ---
 
-## Phase J — Reference Configuration
+## Phase K — Reference Configuration
 
-### TASK-31: Create reference project configuration
+### TASK-34: Create reference project configuration
 
 **Inputs:**
 - TASK-13 config loader
@@ -979,7 +1089,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-32: Final validation and AGENTS.md self-test
+### TASK-35: Final validation and AGENTS.md self-test
 
 **Inputs:**
 - All previous tasks complete
@@ -998,24 +1108,25 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    3. The event schema contract matches what `emit_validated` actually requires
    4. The listed permitted network calls match what's in the reference ACAP
 5. If any discrepancy is found in `AGENTS.md`, update `AGENTS.md` to match the actual implementation — never change the implementation to match `AGENTS.md` without human review.
-6. Create a final commit: `TASK-32: validated — all checks pass, AGENTS.md accurate`
+6. Create a final commit: `TASK-35: validated — all checks pass, AGENTS.md accurate`
 
 **Done when:**
 - Full local CI pipeline exits 0
 - Secret scan exits 0
 - Reference config loads successfully
 - `AGENTS.md` accurately describes the actual repository structure and enforcement rules
-- Final commit exists with message `TASK-32: validated — all checks pass, AGENTS.md accurate`
+- Final commit exists with message `TASK-35: validated — all checks pass, AGENTS.md accurate`
 
 ---
 
-All 32 tasks complete. The Agent Operations repository is ready for first deployment.
+All 35 tasks complete. The Agent Operations repository is ready for first deployment.
 
 Proceed with:
 1. Creating the Render services from `infra/render/render.yaml`
 2. Setting all required environment variables as Render secrets
 3. Running `make migrate` to initialise the ArcadeDB schema
 4. Running the orchestration background worker
-5. Verifying traces appear in Langfuse Cloud
+5. Running the human approval UI (`cd ui && npm install && npm start`)
+6. Verifying traces appear in Langfuse Cloud
 
 **References:** Agent Operations Requirements Document (project); The Event Log and Agent Types (project); AI-Native Organization Blueprint (project); ArcadeDB documentation; Render.com documentation; LangGraph documentation; OpenRouter documentation.

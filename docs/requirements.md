@@ -49,10 +49,11 @@ The platform is organised around five stores and four agent types. The stores pr
 | **Verification** | Short-lived investigators | Spawned in response to findings above a significance threshold. Must use a different model family from the originating agent. Attempts to disprove findings, not confirm them. Terminates on completion. |
 | **Objective** | Assigned executors | Triggered by objective assignment from the orchestration layer. Reads event log and knowledge graph for research context. Writes cognitive checkpoints at decision boundaries. Replaceable via checkpoint handoff. |
 | **Orchestration** | System allocators | Continuous polling against event log and objective registry. Watches signal density and objective health. Creates and closes objectives. Provisions and terminates agents. Escalates to human review at defined thresholds. |
+| **Implementation** | Code executors | Triggered by human-approved objectives. Reads the plan from the objective agent's checkpoint. Executes code changes, writes files, runs tests. Emits implementation events. Terminates on completion or failure. |
 
 ### 2.3 The Coordination Loop
 
-The four agent types operate in a self-sustaining loop: **Sense → Reinforce → Verify → Commit → Execute → Checkpoint → Promote → Close**. The loop does not require human initiation below the escalation threshold. Humans govern the thresholds, handle escalations, own the identity store, and set exploratory agent standing mandates.
+The five agent types operate in a self-sustaining loop with a human gate: **Sense → Reinforce → Verify → Commit → Execute → Checkpoint → Promote → Approve → Implement → Close**. The loop does not require human initiation below the escalation threshold. Humans govern the thresholds, handle escalations, own the identity store, set exploratory agent standing mandates, and approve implementation tasks before execution.
 
 ### 2.4 Technology Stack
 
@@ -141,7 +142,8 @@ The platform repository contains only reusable infrastructure — no project-spe
 | `agents/exploratory/` | Exploratory agent implementation. LangGraph state graph. Standing mandate loader. Signal quality filter. Novelty check against event log. |
 | `agents/verification/` | Verification agent implementation. Independence enforcement — model family check at instantiation. Adversarial investigation pattern. Confidence-weighted verdict emission. |
 | `agents/objective/` | Objective agent implementation. Research loop (graph → MCP → event log delta). Checkpoint discipline at node boundaries. Scope enforcement via ACAP. |
-| `agents/orchestration/` | Orchestration agent implementation. Signal density monitor. Objective lifecycle manager. Agent provisioner. Escalation logic. Knowledge graph promotion trigger. |
+| `agents/implementation/` | Implementation agent implementation. Polls for approved objectives. Executes code changes from checkpoint plans. Emits implementation events. ACAP-enforced file operations. |
+| `agents/orchestration/` | Orchestration agent implementation. Signal density monitor. Objective lifecycle manager. Agent provisioner. Escalation logic. Knowledge graph promotion trigger. Human approval workflow coordination. |
 | `shared/event_schemas/` | Canonical event type definitions and validation. All five event categories: signals, actions, findings, checkpoints, state transitions. Schema version management. |
 | `shared/acap/` | ACAP loader, validator, and runtime enforcer. Reads from identity store. Applies boundary checks before each agent action. Scope violation detection. |
 | `shared/arcadedb/` | ArcadeDB client. Query helpers for each store type. Time-series polling with cursor management. Graph traversal patterns. Confidence decay functions. |
@@ -211,7 +213,7 @@ The platform must validate all project configuration files against published sch
 
 **Description:**
 
-The platform must initialise the required ArcadeDB TimeSeries types on first run if they do not exist. Five types are required: `AgentSignals` (7-day retention), `AgentActions` (30-day retention), `AgentFindings` (90-day retention), `AgentCheckpoints` (180-day retention), `ObjectiveTransitions` (indefinite). Initialisation must be idempotent — safe to run against an already-initialised database.
+The platform must initialise the required ArcadeDB TimeSeries types on first run if they do not exist. Five types are required: `AgentSignal` (7-day retention), `AgentAction` (30-day retention), `AgentFinding` (90-day retention), `AgentCheckpoint` (180-day retention), `ObjectiveTransition` (indefinite). Initialisation must be idempotent — safe to run against an already-initialised database.
 
 **Acceptance:**
 
@@ -371,6 +373,44 @@ The orchestration agent must coordinate verification agent instantiation to prev
 - When verification completes, the finding is marked `verified` or `contradicted` with the verdict
 - If a verification agent fails mid-execution, the finding is reset to `verification_pending` for retry
 - Integration test confirms no finding is verified by multiple agents simultaneously
+
+#### REQ-AG-07: Implementation Agent — Human-Approved Execution
+
+**Description:**
+
+The implementation agent must only execute objectives that have been explicitly approved by a human. It polls the objective registry for objectives with `implementation_status='approved'` and `implementation_state` in `['to_do', 'pending']`. The agent reads the execution plan from the objective's cognitive checkpoint, performs code changes, writes files, runs tests, and emits `AgentAction` events for each step. The agent must enforce ACAP boundaries on all file operations and tool usage. On completion, it updates the objective status to `complete` and promotes findings to the knowledge graph. On failure, it writes a checkpoint and marks the objective as `stalled` for human review.
+
+**Acceptance:**
+
+- Implementation agent only processes objectives with `implementation_status='approved'`
+- Implementation agent only processes objectives with `implementation_state` in `['to_do', 'pending']`
+- Implementation agent reads the execution plan from the objective's cognitive checkpoint
+- All file operations are logged as `AgentAction` events
+- ACAP boundaries are enforced for all tool usage
+- On completion, objective status is updated to `complete`
+- On failure, a checkpoint is written and objective is marked `stalled`
+- Integration test confirms unapproved objectives are not executed
+
+### 4.5 Human Review and Approval
+
+#### REQ-HR-01: Human Gate for Implementation
+
+**Description:**
+
+The platform must provide a human approval gate before implementation agents execute code changes. When an objective agent completes its research and creates an execution plan, the orchestration agent must mark the objective with `implementation_status='pending_approval'` and `implementation_state='to_do'`. A human reviewer must approve or reject the plan via a UI (CopilotKit-based) before an implementation agent can execute it. The approval decision must be stored in the objective registry with timestamp, reviewer identity, and optional comments. The implementation agent polls for approved objectives and only executes those with `implementation_status='approved'`.
+
+**Acceptance:**
+
+- Objective registry includes `implementation_status` field with values: `pending_approval`, `approved`, `rejected`, `deferred`
+- Objective registry includes `implementation_state` field with values: `to_do`, `in_progress`, `complete`, `failed`
+- Objective registry includes `approval_metadata` field with: `reviewer_id`, `approved_at`, `comments`
+- Orchestration agent marks completed objectives as `implementation_status='pending_approval'`
+- Human UI displays pending approval items with plan details and context
+- Human can approve, reject, or defer with optional comments
+- Approval decision is stored in objective registry with timestamp and reviewer identity
+- Implementation agent only processes objectives with `implementation_status='approved'`
+- Integration test confirms unapproved objectives cannot be executed
+- UI is built with CopilotKit and provides a clear approval workflow
 
 ### 4.5 Guardrail Ensemble
 
