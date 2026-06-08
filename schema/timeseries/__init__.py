@@ -60,4 +60,5 @@ async def run_migrations(client: ArcadeDBClientProtocol, database: str) -> None:
             except Exception as e:
                 logger.error(f"Migration failed: {migration_file.name}")
                 logger.error(f"Statement: {statement}")
+                logger.error(f"Error: {e}")
                 raise
