@@ -15,9 +15,11 @@ async def test_run_migrations_executes_all_statements() -> None:
     await run_migrations(mock_client, "testdb")
 
     assert mock_client.execute_command.call_count > 0
+    assert any(
+        "CREATE TYPE" in call.args[1] for call in mock_client.execute_command.call_args_list
+    )
     for call in mock_client.execute_command.call_args_list:
         assert call.args[0] == "testdb"
-
 
 @pytest.mark.asyncio
 async def test_run_migrations_executes_if_not_exists_statements() -> None:
