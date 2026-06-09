@@ -20,7 +20,7 @@ from .client import ArcadeDBClient
 _VERTEX_TYPES = list(DECAY_RATES.keys())
 
 
-async def _node_from_record(record: dict[str, Any]) -> GraphNode:
+def _node_from_record(record: dict[str, Any]) -> GraphNode:
     """Deserialize an ArcadeDB record into a GraphNode."""
     node_type = record["node_type"]
     last_reinforced = record["last_reinforced"]
@@ -103,7 +103,7 @@ async def get_node(
             {"node_id": node_id},
         )
         if records:
-            return await _node_from_record(records[0])
+            return _node_from_record(records[0])
     return None
 
 
@@ -136,7 +136,7 @@ async def traverse_from(
     for record in records:
         node_type = record.get("node_type")
         if node_type and node_type in DECAY_RATES:
-            nodes.append(await _node_from_record(record))
+            nodes.append(_node_from_record(record))
     return nodes
 
 
@@ -204,7 +204,7 @@ async def apply_decay_all(client: ArcadeDBClient) -> int:
             continue
 
         for record in records:
-            node = await _node_from_record(record)
+            node = _node_from_record(record)
             elapsed_days = (now - node.last_reinforced).total_seconds() / 86400.0
             if elapsed_days < 0:
                 elapsed_days = 0.0
