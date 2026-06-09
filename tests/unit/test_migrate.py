@@ -119,8 +119,8 @@ def test_run_migrations_hash_enforcement(
     migration_file.write_text("CREATE TYPE IF NOT EXISTS modified_test;\n")
 
     client2 = MockArcadeDBClient()
-    first_id = sorted(client._applied.keys())[0]
-    client2.record_applied(first_id, "different-old-hash")
+    migration_id = migration_file.name
+    client2.record_applied(migration_id, client._applied[migration_id])
 
     with pytest.raises(RuntimeError, match="has been modified after it was applied"):
         asyncio.run(run_migrations(client2))
