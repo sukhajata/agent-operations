@@ -46,8 +46,9 @@ def _make_client() -> ArcadeDBClient:
     client = ArcadeDBClient("http://localhost:2480", "testdb", "user", "pass")
     response = _mock_http_response()
     response.json = lambda: {"result": []}
-    client._client.post = AsyncMock(return_value=response)  # type: ignore[method-assign]
-    return client
+    client._client.post = AsyncMock(  # type: ignore[method-assign]
+        return_value=response
+    )
 
 
 def test_read_permitted_server() -> None:
