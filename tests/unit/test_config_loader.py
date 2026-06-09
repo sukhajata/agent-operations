@@ -48,11 +48,9 @@ resource_ceiling:
     (mandates_dir / "competitor_monitor.yaml").write_text("""
 name: competitor_monitor
 domain: competitive_intelligence
+agent_type: free
 polling_interval_minutes: 30
 signal_threshold: 0.6
-search_queries:
-  - competitor updates
-  - industry announcements
 """)
 
     return base

@@ -189,10 +189,13 @@ def test_emit_event_signal() -> None:
         event_type="AgentSignal",
         ts=SAMPLE_DATETIME,
         agent_id="agent-1",
-        objective_id="none",
         mtp_version="1.0",
-        payload={"domain": "test", "signal": "interesting"},
+        claim="interesting finding",
+        domain="test",
         confidence=0.8,
+        reasoning="found via graph search",
+        sources=["node-42"],
+        focus_id="obj-001",
         novelty_flag=True,
     )
 
@@ -202,6 +205,8 @@ def test_emit_event_signal() -> None:
         assert "INSERT INTO AgentSignal" in body["command"]
         assert body["params"]["agent_id"] == "agent-1"
         assert body["params"]["confidence"] == 0.8
+        assert body["params"]["focus_id"] == "obj-001"
+        assert body["params"]["claim"] == "interesting finding"
 
     asyncio.run(_run())
 
@@ -235,7 +240,7 @@ def test_poll_events_partition_pruning() -> None:
     async def _run() -> None:
         await poll_events(
             client,
-            event_type="AgentSignal",
+            event_type="AgentFinding",
             since_ts=SAMPLE_DATETIME,
             agent_id="agent-1",
             objective_id="obj-1",
@@ -253,6 +258,30 @@ def test_poll_events_partition_pruning() -> None:
         assert params["agent_id"] == "agent-1"
         assert params["objective_id"] == "obj-1"
         assert body["limit"] == 50
+
+    asyncio.run(_run())
+
+
+def test_poll_events_with_focus_id() -> None:
+    """Verify poll_events supports focus_id filtering for AgentSignal."""
+    client = MockArcadeDBClient()
+    client.set_response()
+
+    async def _run() -> None:
+        await poll_events(
+            client,
+            event_type="AgentSignal",
+            since_ts=SAMPLE_DATETIME,
+            agent_id="agent-1",
+            focus_id="obj-001",
+            limit=50,
+        )
+        body = client.pop_post_call()
+        command = body["command"]
+        params = body["params"]
+
+        assert "focus_id = :focus_id" in command
+        assert params["focus_id"] == "obj-001"
 
     asyncio.run(_run())
 

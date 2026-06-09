@@ -1,13 +1,14 @@
 """Event log dataclasses for ArcadeDB TimeSeries types.
 
 Defines the five event types used in the Agent Operations event log:
-- AgentSignal: Exploratory agent observations
+- AgentSignal: Exploratory agent observations with claim, domain, reasoning, sources
 - AgentAction: Agent tool executions and operations
 - AgentFinding: Verification and objective agent conclusions
 - AgentCheckpoint: Objective agent decision boundaries
 - ObjectiveTransition: Objective lifecycle state changes
 
-Each event type carries: event_type, ts, agent_id, objective_id, mtp_version, payload.
+Each event type carries: event_type, ts, agent_id, mtp_version.
+AgentSignal uses focus_id (optional, for focused exploration) instead of objective_id.
 AgentSignal and AgentFinding additionally carry confidence and novelty_flag.
 """
 
@@ -26,10 +27,13 @@ class AgentSignal:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
     mtp_version: str
-    payload: dict[str, Any]
+    claim: str
+    domain: str
     confidence: float
+    reasoning: str
+    sources: list[str]
+    focus_id: str | None
     novelty_flag: bool
 
     def __post_init__(self) -> None:

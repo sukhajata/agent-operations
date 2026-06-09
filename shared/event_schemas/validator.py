@@ -30,7 +30,6 @@ VALID_EVENT_TYPES = frozenset({
 
 REQUIRED_FIELDS = frozenset({
     "agent_id",
-    "objective_id",
     "mtp_version",
     "ts",
     "event_type",

@@ -17,6 +17,7 @@ dependencies = [
     "presidio-anonymizer>=2",
     "jsonschema>=4.26.0",
     "pyyaml>=6.0.3",
+    "langchain-openrouter>=0.2.3",
 ]
 
 [dependency-groups]
@@ -34,4 +35,4 @@ dev = [
 package = true
 
 [tool.setuptools.packages.find]
-include = ["agents*", "shared*", "schema*", "config*"]
+include = ["agents*", "shared*", "schema*", "config*", "tools*"]

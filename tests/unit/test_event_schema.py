@@ -22,6 +22,20 @@ SAMPLE_DATETIME = datetime(2026, 6, 9, 12, 0, 0, tzinfo=UTC)
 
 
 def _valid_event(event_type: str) -> dict[str, Any]:
+    if event_type == "AgentSignal":
+        return {
+            "event_type": "AgentSignal",
+            "ts": SAMPLE_DATETIME,
+            "agent_id": "agent-1",
+            "mtp_version": "1.0",
+            "claim": "test claim",
+            "domain": "test",
+            "confidence": 0.8,
+            "reasoning": "test reasoning",
+            "sources": ["source-1"],
+            "focus_id": "obj-1",
+            "novelty_flag": False,
+        }
     base: dict[str, Any] = {
         "event_type": event_type,
         "ts": SAMPLE_DATETIME,
@@ -30,7 +44,7 @@ def _valid_event(event_type: str) -> dict[str, Any]:
         "mtp_version": "1.0",
         "payload": {},
     }
-    if event_type in ("AgentSignal", "AgentFinding"):
+    if event_type == "AgentFinding":
         base["confidence"] = 0.8
         base["novelty_flag"] = False
     return base
@@ -108,11 +122,10 @@ def test_check_required_fields_missing_agent_id() -> None:
         check_required_fields(event)
 
 
-def test_check_required_fields_missing_objective_id() -> None:
+def test_check_required_fields_missing_focus_id_ok_for_free_exploration() -> None:
     event = _valid_event("AgentSignal")
-    del event["objective_id"]
-    with pytest.raises(EventSchemaError, match="objective_id"):
-        check_required_fields(event)
+    del event["focus_id"]
+    check_required_fields(event)
 
 
 def test_check_required_fields_missing_mtp_version() -> None:
