@@ -124,9 +124,9 @@ async def _record_migration(
     await client.execute_command(
         database,
         "INSERT INTO SchemaMigration SET "
-        f"migration_id = '{migration_id}', "
+        f"migration_id = '{migration_id.replace("'", "''")}', "
         f"file_hash = '{file_hash}', "
-        "applied_at = SYSDATE()",
+        "applied_at = SYSDATE()", 
     )
 
 
