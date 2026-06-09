@@ -45,7 +45,9 @@ def _validate(path: Path, schema: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(data, dict):
         raise ConfigValidationError(f"Config file must be a YAML mapping: {path}")
     try:
-        jsonschema.validate(data, schema)
+        validator_cls = jsonschema.validators.validator_for(schema)
+        validator = validator_cls(schema, format_checker=jsonschema.FormatChecker())
+        validator.validate(data)
     except jsonschema.ValidationError as e:
         raise ConfigValidationError(
             f"Validation failed in {path.name}: {e.message} "
