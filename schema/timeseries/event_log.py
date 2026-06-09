@@ -1,27 +1,25 @@
 """Event log dataclasses for ArcadeDB TimeSeries types.
 
-Defines the five event types used in the Agent Operations event log:
-- AgentSignal: Exploratory agent observations with claim, domain, reasoning, sources
-- AgentAction: Agent tool executions and operations
-- AgentFinding: Verification and objective agent conclusions
-- AgentCheckpoint: Objective agent decision boundaries
-- ObjectiveTransition: Objective lifecycle state changes
+Defines the event types used in the Agent Operations event log:
+- AgentSignal: Exploratory observations and verification findings (stage='observation'|'finding')
+- AgentAction: Agent tool executions, operations, and worker lifecycle events
+- AgentCheckpoint: Agent decision boundaries
+- CommitmentTransition: Commitment lifecycle state changes
 
 Each event type carries: event_type, ts, agent_id, mtp_version.
-AgentSignal uses focus_id (optional, for focused exploration) instead of objective_id.
-AgentSignal and AgentFinding additionally carry confidence and novelty_flag.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
 class AgentSignal:
-    """Exploratory agent observation emitted to the event log.
+    """Exploratory agent observation or verification finding.
 
-    Retention: 7 days.
+    stage='observation': emitted by exploratory agents (retention: 7 days)
+    stage='finding': emitted by verification agents (retention: 90 days)
     """
 
     event_type: str
@@ -34,6 +32,7 @@ class AgentSignal:
     reasoning: str
     sources: list[str]
     focus_id: str | None
+    stage: Literal["observation", "finding"]
     novelty_flag: bool
 
     def __post_init__(self) -> None:
@@ -45,7 +44,10 @@ class AgentSignal:
 
 @dataclass
 class AgentAction:
-    """Agent tool execution or operational event.
+    """Agent tool execution, operation, or worker lifecycle event.
+
+    Use payload.action for the action type (e.g. 'WorkerStarted', 'WorkerCompleted',
+    'tool_call', 'query').
 
     Retention: 30 days.
     """
@@ -53,7 +55,7 @@ class AgentAction:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
+    commitment_id: str | None
     mtp_version: str
     payload: dict[str, Any]
 
@@ -63,31 +65,8 @@ class AgentAction:
 
 
 @dataclass
-class AgentFinding:
-    """Verification or objective agent conclusion.
-
-    Retention: 90 days.
-    """
-
-    event_type: str
-    ts: datetime
-    agent_id: str
-    objective_id: str
-    mtp_version: str
-    payload: dict[str, Any]
-    confidence: float
-    novelty_flag: bool
-
-    def __post_init__(self) -> None:
-        if self.event_type != "AgentFinding":
-            raise ValueError(f"event_type must be 'AgentFinding', got '{self.event_type}'")
-        if not 0.0 <= self.confidence <= 1.0:
-            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
-
-
-@dataclass
 class AgentCheckpoint:
-    """Objective agent decision boundary checkpoint.
+    """Agent decision boundary checkpoint.
 
     Retention: 180 days.
     """
@@ -95,7 +74,7 @@ class AgentCheckpoint:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
+    commitment_id: str
     mtp_version: str
     payload: dict[str, Any]
 
@@ -105,8 +84,8 @@ class AgentCheckpoint:
 
 
 @dataclass
-class ObjectiveTransition:
-    """Objective lifecycle state change event.
+class CommitmentTransition:
+    """Commitment lifecycle state change event.
 
     Retention: indefinite (0 days).
     """
@@ -114,12 +93,12 @@ class ObjectiveTransition:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
+    commitment_id: str
     mtp_version: str
     payload: dict[str, Any]
 
     def __post_init__(self) -> None:
-        if self.event_type != "ObjectiveTransition":
+        if self.event_type != "CommitmentTransition":
             raise ValueError(
-                f"event_type must be 'ObjectiveTransition', got '{self.event_type}'"
+                f"event_type must be 'CommitmentTransition', got '{self.event_type}'"
             )

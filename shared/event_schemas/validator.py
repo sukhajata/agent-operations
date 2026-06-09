@@ -12,9 +12,8 @@ from typing import TYPE_CHECKING, Any
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
-    AgentFinding,
     AgentSignal,
-    ObjectiveTransition,
+    CommitmentTransition,
 )
 
 if TYPE_CHECKING:
@@ -23,9 +22,8 @@ if TYPE_CHECKING:
 VALID_EVENT_TYPES = frozenset({
     "AgentSignal",
     "AgentAction",
-    "AgentFinding",
     "AgentCheckpoint",
-    "ObjectiveTransition",
+    "CommitmentTransition",
 })
 
 REQUIRED_FIELDS = frozenset({
@@ -35,15 +33,19 @@ REQUIRED_FIELDS = frozenset({
     "event_type",
 })
 
-Event = AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition
+Event = AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition
 
 _EVENT_CLASSES: dict[str, type[Event]] = {
     "AgentSignal": AgentSignal,
     "AgentAction": AgentAction,
-    "AgentFinding": AgentFinding,
     "AgentCheckpoint": AgentCheckpoint,
-    "ObjectiveTransition": ObjectiveTransition,
+    "CommitmentTransition": CommitmentTransition,
 }
+
+_REMOVED_EVENT_TYPES = frozenset({
+    "AgentFinding",
+    "ObjectiveTransition",
+})
 
 
 class EventSchemaError(ValueError):
@@ -53,7 +55,7 @@ class EventSchemaError(ValueError):
 def check_required_fields(event: dict[str, Any]) -> None:
     """Verify all required fields are present and non-empty.
 
-    Fields checked: agent_id, objective_id, mtp_version, ts, event_type.
+    Fields checked: agent_id, mtp_version, ts, event_type.
 
     Raises EventSchemaError if any required field is missing or empty.
     """
@@ -82,6 +84,14 @@ def validate_event(event: dict[str, Any]) -> Event:
     check_required_fields(event)
 
     event_type = event["event_type"]
+
+    if event_type in _REMOVED_EVENT_TYPES:
+        raise EventSchemaError(
+            f"Event type '{event_type}' has been removed. "
+            f"Use 'AgentSignal' with stage='finding' instead of 'AgentFinding', "
+            f"or 'CommitmentTransition' instead of 'ObjectiveTransition'."
+        )
+
     if event_type not in VALID_EVENT_TYPES:
         raise EventSchemaError(
             f"Unknown event_type '{event_type}'. "

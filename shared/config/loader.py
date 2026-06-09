@@ -22,7 +22,7 @@ class MandateDefinition:
     """Exploratory agent mandate.
 
     agent_type: 'free' explores a domain with no pre-set direction;
-        'focus' follows a specific ObjectiveRecord from the registry.
+        'focus' follows a specific FocusRecord from the registry.
     """
 
     name: str

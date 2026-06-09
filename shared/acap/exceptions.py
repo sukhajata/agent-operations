@@ -13,12 +13,12 @@ class ACAPViolationError(Exception):
         action: str,
         reason: str,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
     ) -> None:
         self.action = action
         self.reason = reason
         self.agent_id = agent_id
-        self.objective_id = objective_id
+        self.focus_id = focus_id
         super().__init__(f"ACAP violation by {agent_id}: {action} — {reason}")
 
 

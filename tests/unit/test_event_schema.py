@@ -8,9 +8,8 @@ import pytest
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
-    AgentFinding,
     AgentSignal,
-    ObjectiveTransition,
+    CommitmentTransition,
 )
 from shared.event_schemas.validator import (
     EventSchemaError,
@@ -34,20 +33,37 @@ def _valid_event(event_type: str) -> dict[str, Any]:
             "reasoning": "test reasoning",
             "sources": ["source-1"],
             "focus_id": "obj-1",
+            "stage": "observation",
             "novelty_flag": False,
         }
-    base: dict[str, Any] = {
-        "event_type": event_type,
-        "ts": SAMPLE_DATETIME,
-        "agent_id": "agent-1",
-        "objective_id": "obj-1",
-        "mtp_version": "1.0",
-        "payload": {},
-    }
-    if event_type == "AgentFinding":
-        base["confidence"] = 0.8
-        base["novelty_flag"] = False
-    return base
+    if event_type == "AgentAction":
+        return {
+            "event_type": "AgentAction",
+            "ts": SAMPLE_DATETIME,
+            "agent_id": "agent-1",
+            "commitment_id": None,
+            "mtp_version": "1.0",
+            "payload": {},
+        }
+    if event_type == "AgentCheckpoint":
+        return {
+            "event_type": "AgentCheckpoint",
+            "ts": SAMPLE_DATETIME,
+            "agent_id": "agent-1",
+            "commitment_id": "com-1",
+            "mtp_version": "1.0",
+            "payload": {},
+        }
+    if event_type == "CommitmentTransition":
+        return {
+            "event_type": "CommitmentTransition",
+            "ts": SAMPLE_DATETIME,
+            "agent_id": "agent-1",
+            "commitment_id": "com-1",
+            "mtp_version": "1.0",
+            "payload": {},
+        }
+    raise ValueError(f"Unknown event type: {event_type}")
 
 
 # --- validate_event ---
@@ -59,6 +75,16 @@ def test_validate_agent_signal() -> None:
     assert isinstance(result, AgentSignal)
     assert result.agent_id == "agent-1"
     assert result.confidence == 0.8
+    assert result.stage == "observation"
+
+
+def test_validate_agent_signal_finding() -> None:
+    event = _valid_event("AgentSignal")
+    event["stage"] = "finding"
+    event["confidence"] = 0.95
+    result = validate_event(event)
+    assert isinstance(result, AgentSignal)
+    assert result.stage == "finding"
 
 
 def test_validate_agent_action() -> None:
@@ -67,23 +93,16 @@ def test_validate_agent_action() -> None:
     assert isinstance(result, AgentAction)
 
 
-def test_validate_agent_finding() -> None:
-    event = _valid_event("AgentFinding")
-    result = validate_event(event)
-    assert isinstance(result, AgentFinding)
-    assert result.novelty_flag is False
-
-
 def test_validate_agent_checkpoint() -> None:
     event = _valid_event("AgentCheckpoint")
     result = validate_event(event)
     assert isinstance(result, AgentCheckpoint)
 
 
-def test_validate_objective_transition() -> None:
-    event = _valid_event("ObjectiveTransition")
+def test_validate_commitment_transition() -> None:
+    event = _valid_event("CommitmentTransition")
     result = validate_event(event)
-    assert isinstance(result, ObjectiveTransition)
+    assert isinstance(result, CommitmentTransition)
 
 
 def test_validate_missing_event_type() -> None:
@@ -97,6 +116,20 @@ def test_validate_unknown_event_type() -> None:
     event = _valid_event("AgentSignal")
     event["event_type"] = "UnknownEvent"
     with pytest.raises(EventSchemaError, match="Unknown event_type"):
+        validate_event(event)
+
+
+def test_validate_rejects_removed_agent_finding() -> None:
+    event = _valid_event("AgentSignal")
+    event["event_type"] = "AgentFinding"
+    with pytest.raises(EventSchemaError, match="has been removed"):
+        validate_event(event)
+
+
+def test_validate_rejects_removed_objective_transition() -> None:
+    event = _valid_event("CommitmentTransition")
+    event["event_type"] = "ObjectiveTransition"
+    with pytest.raises(EventSchemaError, match="has been removed"):
         validate_event(event)
 
 
@@ -122,7 +155,7 @@ def test_check_required_fields_missing_agent_id() -> None:
         check_required_fields(event)
 
 
-def test_check_required_fields_missing_focus_id_ok_for_free_exploration() -> None:
+def test_check_required_fields_focus_id_optional() -> None:
     event = _valid_event("AgentSignal")
     del event["focus_id"]
     check_required_fields(event)

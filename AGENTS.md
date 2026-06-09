@@ -6,7 +6,7 @@ Agent Operations is a reusable agent platform implementing the ExO 3.0 Intellige
 
 ## 2. Directory Map
 
-- `agents/` — Agent implementations (exploratory, verification, objective, orchestration)
+- `agents/` — Agent implementations (exploratory, verification, research_plan, implementation, orchestration)
 - `shared/` — Shared libraries (ArcadeDB client, OpenRouter client, ACAP enforcer, event schemas, MCP manager)
 - `schema/` — ArcadeDB schema definitions and migrations (timeseries, graph, identity)
 - `guardrails/` — Guardrail ensemble and safety profiles
@@ -22,7 +22,9 @@ Agents **MAY** modify all directories in this repository except:
 
 ## 4. Event Schema Contract
 
-Any code that emits events **MUST** use the canonical schemas in `shared/event_schemas/`. Every event **MUST** carry: `agent_id`, `objective_id`, `mtp_version`, `timestamp`.
+Any code that emits events **MUST** use the canonical schemas in `shared/event_schemas/`. Every event **MUST** carry: `agent_id`, `focus_id`, `mtp_version`, `timestamp`.
+
+`AgentSignal` uses `stage: 'observation'|'finding'` to differentiate exploratory observations from verification findings. `AgentFinding` and `ObjectiveTransition` are removed — use `AgentSignal` with `stage='finding'` and `CommitmentTransition` respectively.
 
 ## 5. ACAP Constraints
 
@@ -32,7 +34,11 @@ This repository has its own ACAP. Agents working here may not make external netw
 - Postgres at `POSTGRES_URL`
 - Langfuse at `LANGFUSE_HOST`
 
-## 6. Test Requirement
+## 6. Verification Independence
+
+Verification agents **MUST** use a different model family from the signal's originating agent. `enforce_independence()` in `shared/openrouter/models.py` enforces this at runtime.
+
+## 7. Test Requirement
 
 Ensure to write tests for new code which is testable.
 
@@ -41,11 +47,11 @@ All changes must pass:
 - `mypy --strict .`
 - `pytest tests/unit/` with 80% coverage on modified modules
 
-## 7. Documentation Requirements
+## 8. Documentation Requirements
 
 Ensure that the README.md is up to date with the current state of the repo.
 
-## 8. Task management
+## 9. Task management
 
 If using a plan or tasks document, be sure to mark completed tasks as completed.
 

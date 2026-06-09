@@ -2,7 +2,7 @@
 
 **Repository Build Plan — Task Instructions for Agent Execution**
 
-June 2026 — v0.1
+June 2026 — v0.2
 
 ## Instructions for the Executing Agent
 
@@ -16,15 +16,23 @@ Commit after each completed task with the task ID as the commit message prefix (
 
 All code must be fully typed. No hardcoded project names, domains, or credentials anywhere in the codebase.
 
-**Deployment target:** Render.com. ArcadeDB as a private service with persistent disk. Orchestration agent as a background worker. Exploratory agents as cron jobs. Verification and objective agents as LangGraph subgraphs within the orchestration agent process. PostgreSQL via Render managed Postgres for LangGraph checkpoints.
+**Deployment target:** Render.com. ArcadeDB as a private service with persistent disk. Each agent type as an independent Render service — exploratory agents as cron jobs, verification/research-plan/implementation agents as background workers triggered by event log polling. Orchestration agent as a thin background worker. PostgreSQL via Render managed Postgres for LangGraph checkpoints (implementation agent only).
+
+**Architecture principles:**
+
+- Each agent is an independent process. Coordination happens through the shared substrate (ArcadeDB event log and commitment registry), not through a managing process.
+- Colony workers (exploratory agents) are homogeneous — same code, different mandate configuration.
+- Signal flow is: `observation` → verification → `finding` → research/plan → human approval → implementation.
+- Each stage agent polls the event log or commitment registry independently. No agent spawns another.
+- The orchestration agent monitors health, escalates failures, and manages knowledge graph promotion. It does not coordinate agent execution.
 
 **Key invariants to enforce throughout:**
 
 1. No project-specific code in this repository
 2. No credentials in any file
-3. Every emitted event carries `agent_id`, `objective_id`, `mtp_version`, and `timestamp`
+3. Every emitted event carries `agent_id`, `focus_id`, `mtp_version`, and `timestamp`
 4. ACAP boundaries are checked before every agent action
-5. Verification agents always use a different model family from the finding's originating agent
+5. Verification agents always use a different model family from the signal's originating agent
 
 ## Phase Overview
 
@@ -33,14 +41,15 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 | A | Repository Scaffold | TASK-01 to TASK-03 |
 | B | ArcadeDB Schema | TASK-04 to TASK-07 |
 | C | Shared Libraries | TASK-08 to TASK-13 |
-| D | Agent Implementations | TASK-14 to TASK-19 |
-| E | Orchestration and Subagents | TASK-20 to TASK-22 |
-| F | Human Approval UI | TASK-23 |
-| G | Guardrails | TASK-24 |
-| H | Observability | TASK-25 to TASK-26 |
-| I | Tests | TASK-27 to TASK-30 |
-| J | CI/CD and Deployment | TASK-31 to TASK-33 |
-| K | Reference Configuration | TASK-34 to TASK-35 |
+| D | Schema Migration | TASK-14-M |
+| E | Agent Implementations | TASK-15 to TASK-19 |
+| F | Orchestration | TASK-20 |
+| G | Human Approval UI | TASK-21 |
+| H | Guardrails | TASK-22 |
+| I | Observability | TASK-23 to TASK-24 |
+| J | Tests | TASK-25 to TASK-28 |
+| K | CI/CD and Deployment | TASK-29 to TASK-31 |
+| L | Reference Configuration | TASK-32 to TASK-33 |
 
 ---
 
@@ -70,7 +79,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 2. Create the full directory tree:
    - `agents/exploratory/`
    - `agents/verification/`
-   - `agents/objective/`
+   - `agents/research_plan/`
    - `agents/implementation/`
    - `agents/orchestration/`
    - `shared/event_schemas/`
@@ -92,7 +101,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 4. Configure `ruff.toml`: `target-version='py312'`, `line-length=100`, `select=['E','F','I','N','UP','ANN']`, strict type annotation rules
 5. Configure `mypy.ini`: `strict=true`, `python_version=3.12`, `warn_return_any=true`, `disallow_untyped_defs=true`
 6. Configure `pyproject.toml` with dev dependencies: `ruff`, `mypy`, `pytest`, `pytest-cov`, `pytest-asyncio`
-7. Add core runtime dependencies: `langgraph`, `langgraph-checkpoint-postgres`, `openai` (for OpenRouter compat), `arcadedb-client` or `httpx` for ArcadeDB HTTP, `pydantic>=2`, `langfuse`, `prometheus-client`, `presidio-analyzer`, `presidio-anonymizer`
+7. Add core runtime dependencies: `langgraph`, `langgraph-checkpoint-postgres`, `openai` (for OpenRouter compat), `httpx` for ArcadeDB HTTP, `pydantic>=2`, `langfuse`, `prometheus-client`, `presidio-analyzer`, `presidio-anonymizer`
 8. Create `.gitignore` excluding: `.env`, `*.env`, `__pycache__`, `.mypy_cache`, `.ruff_cache`, `.venv`, `*.pyc`, `secrets/`
 9. Write `AGENTS.md` at repository root — see AGENTS.md specification in TASK-03
 10. Write `README.md` with: project overview, architecture summary link, required environment variables table, local development setup, running tests
@@ -116,7 +125,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Create `.env.example` listing every required environment variable with placeholder values and a comment describing each. Never use real values. Include: `OPENROUTER_API_KEY`, `ARCADEDB_URL`, `ARCADEDB_USER`, `ARCADEDB_PASSWORD`, `POSTGRES_URL`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST`, `CONFIG_PATH`, `RENDER_API_KEY` (for future orchestration use)
+1. Create `.env.example` listing every required environment variable with placeholder values and a comment describing each. Never use real values. Include: `OPENROUTER_API_KEY`, `ARCADEDB_URL`, `ARCADEDB_USER`, `ARCADEDB_PASSWORD`, `POSTGRES_URL`, `LANGFUSE_SECRET_KEY`, `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_HOST`, `CONFIG_PATH`, `RENDER_API_KEY`
 2. Create `config/env.py` that reads all required environment variables using pydantic `BaseSettings`. Raise a clear `ValueError` at import time if any required variable is missing, naming the missing variable. No defaults for secrets — fail loudly.
 3. Add `config/__init__.py` and export the settings object
 
@@ -138,12 +147,12 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Write `AGENTS.md` at the repository root. This file governs how AI agents (including future objective agents working on this codebase) behave when working in this repository.
+1. Write `AGENTS.md` at the repository root. This file governs how AI agents (including future implementation agents working on this codebase) behave when working in this repository.
 2. Include the following sections:
    - **(1) Repository purpose** — This is a reusable agent platform, not a product. No project-specific code belongs here.
    - **(2) Directory map** — one line per top-level directory explaining what belongs there.
    - **(3) Autonomous modification rules** — agents MAY modify: `agents/`, `shared/`, `tests/unit/`, `tests/agent/` for implementation work. Agents MUST NOT autonomously modify: `schema/migrations/` (human review required for all migrations), `config/schema/` (configuration API is a public contract), `infra/` (infrastructure changes require human approval), `AGENTS.md` itself.
-   - **(4) Event schema contract** — any code that emits events MUST use the canonical schemas in `shared/event_schemas/`. Every event MUST carry `agent_id`, `objective_id`, `mtp_version`, `timestamp`.
+   - **(4) Event schema contract** — any code that emits events MUST use the canonical schemas in `shared/event_schemas/`. Every event MUST carry `agent_id`, `focus_id`, `mtp_version`, `timestamp`.
    - **(5) ACAP constraints** — this repository has its own ACAP. Agents working here may not make external network calls except to: OpenRouter API, ArcadeDB at `ARCADEDB_URL`, Postgres at `POSTGRES_URL`, Langfuse at `LANGFUSE_HOST`.
    - **(6) Test requirement** — all changes must pass: `ruff check`, `mypy --strict`, `pytest tests/unit/` with 80% coverage on modified modules.
 
@@ -160,7 +169,6 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Inputs:**
 - ArcadeDB documentation for TimeSeries types
-- Event type specifications from requirements REQ-EL-01
 
 **Outputs:**
 - `schema/timeseries/event_log.py`
@@ -168,20 +176,22 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Create `schema/timeseries/event_log.py` defining Python dataclasses for all five event types: `AgentSignal`, `AgentAction`, `AgentFinding`, `AgentCheckpoint`, `ObjectiveTransition`. Each must have: `event_type` (str), `ts` (datetime with nanosecond precision), `agent_id` (str), `objective_id` (str), `mtp_version` (str), `payload` (dict[str, Any]). `AgentSignal` and `AgentFinding` additionally require: `confidence` (float, 0.0–1.0), `novelty_flag` (bool).
-2. Create the SQL migration file creating all five ArcadeDB TimeSeries types with correct retention:
-   - `AgentSignals` RETENTION 7 DAYS
+1. Create `schema/timeseries/event_log.py` defining Python dataclasses for four event types: `AgentSignal`, `AgentAction`, `AgentCheckpoint`, `CommitmentTransition`. Each must have: `event_type` (str), `ts` (datetime with nanosecond precision), `agent_id` (str), `focus_id` (str | None), `mtp_version` (str), `payload` (dict[str, Any]). `AgentSignal` additionally requires: `confidence` (float, 0.0–1.0), `novelty_flag` (bool), `stage` (Literal['observation', 'finding']), `claim` (str), `reasoning` (str), `sources` (list[str]).
+
+   Note: `AgentFinding` has been merged into `AgentSignal` via the `stage` field. An `observation` is emitted by exploratory agents; a `finding` is emitted by the verification agent after challenge. This eliminates a redundant type with identical structure.
+
+2. Create the SQL migration file creating four ArcadeDB TimeSeries types with correct retention:
+   - `AgentSignals` RETENTION 30 DAYS
    - `AgentActions` RETENTION 30 DAYS
-   - `AgentFindings` RETENTION 90 DAYS
    - `AgentCheckpoints` RETENTION 180 DAYS
-   - `ObjectiveTransitions` RETENTION 0 (indefinite)
-   
-   Each type must define TAGS (`agent_id` STRING, `objective_id` STRING, `mtp_version` STRING) and FIELDS appropriate to the event type.
+   - `CommitmentTransitions` RETENTION 0 (indefinite)
+
+   Each type must define TAGS (`agent_id` STRING, `focus_id` STRING, `mtp_version` STRING) and FIELDS appropriate to the event type.
 3. Add a migration runner function in `schema/timeseries/__init__.py` that executes the migration SQL idempotently (`CREATE TYPE IF NOT EXISTS` pattern)
 
 **Done when:**
-- All five Python dataclasses are fully typed and pass mypy strict
-- Migration SQL file exists with all five `CREATE TIMESERIES TYPE` statements
+- All four Python dataclasses are fully typed and pass mypy strict
+- Migration SQL file exists with all four `CREATE TIMESERIES TYPE` statements
 - Migration runner function is idempotent — safe to call twice
 
 ---
@@ -189,7 +199,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 ### - [x] TASK-05: Define knowledge graph schema
 
 **Inputs:**
-- Knowledge graph node type specifications from conversation: `ProductStructure`, `DecisionRecord`, `InvestigationFinding`, `CompetitorCapability`, `CustomerTheme`, `CustomerSignal`
+- Knowledge graph node type specifications: `ProductStructure`, `DecisionRecord`, `InvestigationFinding`, `CompetitorCapability`, `CustomerTheme`, `CustomerSignal`
 
 **Outputs:**
 - `schema/graph/node_types.py`
@@ -221,7 +231,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [x] TASK-06: Define identity store and objective registry schema
+### - [x] TASK-06: Define identity store, focus registry, and commitment registry schema
 
 **Inputs:**
 - MTP document structure, ACAP definition structure from requirements
@@ -234,12 +244,13 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 1. Create `schema/identity/models.py` with Pydantic v2 models for:
    - `MTPDocument` (`mtp_id`: str, `version`: str, `purpose`: str, `constraints`: list[str], `intent_description`: str, `created_at`: datetime, `created_by`: str)
-   - `ACAPDefinition` (`acap_id`: str, `agent_type`: Literal['exploratory','verification','objective','orchestration'], `permitted_tools`: list[str], `permitted_mcp_connections`: list[str], `permitted_event_types`: list[str], `forbidden_targets`: list[str], `resource_ceiling`: ResourceCeiling)
+   - `ACAPDefinition` (`acap_id`: str, `agent_type`: Literal['exploratory','verification','research_plan','implementation','orchestration'], `permitted_tools`: list[str], `permitted_mcp_connections`: list[str], `permitted_event_types`: list[str], `forbidden_targets`: list[str], `resource_ceiling`: ResourceCeiling)
    - `ResourceCeiling` (`max_tokens_per_run`: int, `max_duration_seconds`: int, `max_mcp_reads_per_run`: int)
-   - `ObjectiveRecord` (`objective_id`: str, `status`: Literal['pending','active','stalled','complete','escalated'], `created_at`: datetime, `domain`: str, `priority_signal`: float, `checkpoint`: CognitiveCheckpoint | None, `assigned_agent_id`: str | None)
-   - `CognitiveCheckpoint` (`hypotheses_investigated`: list[HypothesisRecord], `current_best_understanding`: str, `recommended_next_action`: str, `checkpoint_at`: datetime)
+   - `FocusRecord` (`focus_id`: str, `domain`: str, `description`: str, `status`: Literal['active','closed'], `created_at`: datetime, `created_by`: str, `signal_count`: int)
+   - `CommitmentRecord` (`commitment_id`: str, `focus_id`: str, `status`: Literal['pending','active','pending_approval','approved','rejected','deferred','complete','stalled','escalated'], `created_at`: datetime, `domain`: str, `priority_signal`: float, `checkpoint`: CognitiveCheckpoint | None, `assigned_agent_id`: str | None)
+   - `CognitiveCheckpoint` (`hypotheses_investigated`: list[HypothesisRecord], `current_best_understanding`: str, `plan`: str | None, `recommended_next_action`: str, `checkpoint_at`: datetime)
    - `HypothesisRecord` (`hypothesis`: str, `conclusion`: Literal['confirmed','rejected','pending'], `evidence`: str)
-2. Create the SQL migration creating ArcadeDB document types for `MTPDocument`, `ACAPDefinition`, and `ObjectiveRecord` with appropriate indexes on `version`, `agent_type`, and `status` respectively.
+2. Create the SQL migration creating ArcadeDB document types for `MTPDocument`, `ACAPDefinition`, `FocusRecord`, and `CommitmentRecord` with appropriate indexes.
 3. Add a schema version constant `VERSION = '1.0'` to `schema/identity/__init__.py`
 
 **Done when:**
@@ -268,7 +279,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    6. Skip already-applied migrations
    7. Fail immediately on any migration error, logging the failing migration filename
 2. Add a CLI entry: `python -m schema.migrate` that can be called from deployment scripts
-3. Enforce migration immutability: the runner must compute a SHA-256 hash of each migration file and store it in `SchemaMigration`. On subsequent runs, if a previously applied migration's hash has changed, raise an error — migration files must never be modified after being applied.
+3. Enforce migration immutability: the runner must compute a SHA-256 hash of each migration file and store it in `SchemaMigration`. On subsequent runs, if a previously applied migration's hash has changed, raise an error.
 
 **Done when:**
 - `python -m schema.migrate` against a fresh ArcadeDB instance applies all migrations and exits 0
@@ -296,9 +307,9 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 **Steps:**
 
 1. Create `shared/arcadedb/client.py` with an `ArcadeDBClient` class using `httpx.AsyncClient`. Methods: `execute_query(database: str, query: str, params: dict | None) -> list[dict]`, `execute_command(database: str, command: str) -> dict`, `health_check() -> bool`. All methods are async. Handle ArcadeDB HTTP error responses and raise typed exceptions.
-2. Create `shared/arcadedb/timeseries.py` with functions: `emit_event(client, event: AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition) -> None`, `poll_events(client, event_type: str, since_ts: datetime, agent_id: str | None, objective_id: str | None, limit: int = 100) -> list[dict]`. The poll function uses cursor-based queries (`WHERE ts > :since_ts`) and must not perform full table scans.
-3. Create `shared/arcadedb/graph.py` with functions: `upsert_node(client, node: GraphNode) -> str`, `get_node(client, node_id: str) -> GraphNode | None`, `traverse_from(client, node_id: str, max_depth: int = 3) -> list[GraphNode]`, `reinforce_node(client, node_id: str) -> None` (resets decay clock, updates confidence), `flag_for_revalidation(client, node_id: str) -> None`, `apply_decay_all(client) -> int` (returns count of nodes updated).
-4. Create `shared/arcadedb/identity.py` with functions: `load_mtp(client) -> MTPDocument`, `load_acap(client, agent_type: str) -> ACAPDefinition`, `get_objective(client, objective_id: str) -> ObjectiveRecord | None`, `create_objective(client, objective: ObjectiveRecord) -> str`, `update_objective(client, objective_id: str, updates: dict) -> None`, `write_checkpoint(client, objective_id: str, checkpoint: CognitiveCheckpoint) -> None`
+2. Create `shared/arcadedb/timeseries.py` with functions: `emit_event(client, event: AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition) -> None`, `poll_events(client, event_type: str, since_ts: datetime, focus_id: str | None, limit: int = 100) -> list[dict]`. The poll function uses cursor-based queries (`WHERE ts > :since_ts`) and must not perform full table scans.
+3. Create `shared/arcadedb/graph.py` with functions: `upsert_node(client, node: GraphNode) -> str`, `get_node(client, node_id: str) -> GraphNode | None`, `traverse_from(client, node_id: str, max_depth: int = 3) -> list[GraphNode]`, `reinforce_node(client, node_id: str) -> None`, `flag_for_revalidation(client, node_id: str) -> None`, `apply_decay_all(client) -> int`.
+4. Create `shared/arcadedb/identity.py` with functions: `load_mtp(client) -> MTPDocument`, `load_acap(client, agent_type: str) -> ACAPDefinition`, `get_focus(client, focus_id: str) -> FocusRecord | None`, `list_active_focuses(client) -> list[FocusRecord]`, `get_commitment(client, commitment_id: str) -> CommitmentRecord | None`, `create_commitment(client, commitment: CommitmentRecord) -> str`, `update_commitment(client, commitment_id: str, updates: dict) -> None`, `write_checkpoint(client, commitment_id: str, checkpoint: CognitiveCheckpoint) -> None`
 
 **Done when:**
 - mypy strict passes on all files
@@ -311,7 +322,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Inputs:**
 - OpenRouter API documentation
-- Model assignments: exploratory/orchestration=`deepseek/deepseek-v4-flash`, verification=`qwen/qwen3.7-plus`, objective=`deepseek/deepseek-v4-pro`
+- Model assignments: exploratory/orchestration=`deepseek/deepseek-v4-flash`, verification=`qwen/qwen3.7-plus`, research_plan/implementation=`deepseek/deepseek-v4-pro`
 
 **Outputs:**
 - `shared/openrouter/__init__.py`
@@ -321,17 +332,17 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 **Steps:**
 
 1. Create `shared/openrouter/models.py` defining:
-   - `AgentRole` enum (`EXPLORATORY`, `VERIFICATION`, `OBJECTIVE`, `ORCHESTRATION`)
-   - `ModelFamily` enum (`DEEPSEEK`, `QWEN`)
+   - `AgentRole` enum (`EXPLORATORY`, `VERIFICATION`, `RESEARCH_PLAN`, `IMPLEMENTATION`, `ORCHESTRATION`)
+   - `ModelFamily` enum (`DEEPSEEK`, `QWEN`, `KIMI`)
    - `MODEL_ASSIGNMENTS` dict mapping `AgentRole` to model string and `ModelFamily`
    - `PROVIDER_ROUTING` dict mapping `AgentRole` to OpenRouter provider config:
      - exploratory/orchestration: `order=['DeepSeek','DeepInfra']`, `allow_fallbacks=True`
-     - objective: `only=['DeepSeek']`, `allow_fallbacks=False`
+     - research_plan/implementation: `only=['DeepSeek']`, `allow_fallbacks=False`, `enable_caching=True`
      - verification: `only=['Alibaba']`, `allow_fallbacks=True`
 2. Create `shared/openrouter/client.py` with `OpenRouterClient` class. Key method: `complete(role: AgentRole, messages: list[dict], system: str, max_tokens: int = 4096, enable_caching: bool = False) -> str`. Must:
    1. Look up model and provider routing from `MODEL_ASSIGNMENTS` and `PROVIDER_ROUTING`
    2. Build the provider object for the OpenRouter request body
-   3. Enable prompt caching headers for `OBJECTIVE` role when `enable_caching=True`
+   3. Enable prompt caching headers for `RESEARCH_PLAN` and `IMPLEMENTATION` roles
    4. Raise `ModelFamilyError` if a verification call is attempted with the same model family as a supplied `originating_model_family` parameter
 3. Add `enforce_independence(requesting_role: AgentRole, originating_model_family: ModelFamily) -> None` that raises `ModelFamilyError` if `requesting_role=VERIFICATION` and `originating_model_family` matches the verification model's family.
 
@@ -347,7 +358,6 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Inputs:**
 - TASK-06 `ACAPDefinition` model
-- TASK-09 client
 
 **Outputs:**
 - `shared/acap/__init__.py`
@@ -356,14 +366,14 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Create `shared/acap/exceptions.py` with: `ACAPViolationError(action: str, reason: str, agent_id: str, objective_id: str)`, `ScopeViolationError` (subclass of `ACAPViolationError`).
+1. Create `shared/acap/exceptions.py` with: `ACAPViolationError(action: str, reason: str, agent_id: str, focus_id: str)`, `ScopeViolationError` (subclass of `ACAPViolationError`).
 2. Create `shared/acap/enforcer.py` with `ACAPEnforcer` class. Constructor takes `ACAPDefinition` and `ArcadeDBClient`. Methods:
-   - `check_tool(tool_name: str) -> None` (raises `ACAPViolationError` if tool not in `permitted_tools`)
-   - `check_mcp_connection(server_url: str) -> None` (raises `ACAPViolationError` if not in `permitted_mcp_connections`)
-   - `check_event_type(event_type: str) -> None` (raises `ACAPViolationError` if not in `permitted_event_types`)
-   - `check_resource_ceiling(tokens_used: int, duration_seconds: float, mcp_reads: int) -> None` (raises `ACAPViolationError` if any ceiling exceeded)
-   - `log_violation(violation: ACAPViolationError, agent_id: str, objective_id: str, mtp_version: str) -> None` (emits a ScopeViolation event to ArcadeDB event log)
-3. All `check_` methods must call `log_violation` before raising — violations are always logged even if the agent catches the exception.
+   - `check_tool(tool_name: str) -> None`
+   - `check_mcp_connection(server_url: str) -> None`
+   - `check_event_type(event_type: str) -> None`
+   - `check_resource_ceiling(tokens_used: int, duration_seconds: float, mcp_reads: int) -> None`
+   - `log_violation(violation: ACAPViolationError, agent_id: str, focus_id: str, mtp_version: str) -> None`
+3. All `check_` methods must call `log_violation` before raising.
 
 **Done when:**
 - `check_tool` raises `ACAPViolationError` for unlisted tools
@@ -385,15 +395,15 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Create `shared/event_schemas/validator.py` with: `validate_event(event: dict) -> AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition` that validates the event dict against the correct typed dataclass based on the `event_type` field. Raise `EventSchemaError` if: `event_type` is missing, `event_type` is not one of the five valid types, any required field is missing or wrongly typed, `confidence` is outside 0.0–1.0 range.
-2. Create a `check_required_fields(event: dict) -> None` helper that verifies `agent_id`, `objective_id`, `mtp_version`, and `ts` are all present and non-empty on every event regardless of type.
-3. Export a single `emit_validated(event: dict, client: ArcadeDBClient) -> None` function that validates then emits — this is the only function agents should call to emit events. Direct writes to ArcadeDB bypassing this function are an ACAP violation.
+1. Create `shared/event_schemas/validator.py` with: `validate_event(event: dict) -> AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition` that validates the event dict against the correct typed dataclass based on the `event_type` field. Raise `EventSchemaError` if: `event_type` is missing, `event_type` is not one of the four valid types, any required field is missing or wrongly typed, `confidence` is outside 0.0–1.0 range.
+2. Create a `check_required_fields(event: dict) -> None` helper that verifies `agent_id`, `mtp_version`, and `ts` are all present and non-empty on every event regardless of type. `focus_id` is optional (free exploration workers emit without one).
+3. Export a single `emit_validated(event: dict, client: ArcadeDBClient) -> None` function that validates then emits.
 
 **Done when:**
-- `validate_event` correctly parses all five event types from valid dicts
+- `validate_event` correctly parses all four event types from valid dicts
 - `validate_event` raises `EventSchemaError` for missing required fields
 - `validate_event` raises `EventSchemaError` for confidence outside 0.0–1.0
-- Unit tests cover all five event types and all error cases
+- Unit tests cover all four event types and all error cases
 - mypy strict passes
 
 ---
@@ -402,7 +412,6 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Inputs:**
 - TASK-10 `ACAPEnforcer`
-- MCP protocol documentation
 
 **Outputs:**
 - `shared/mcp/__init__.py`
@@ -411,12 +420,12 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 **Steps:**
 
 1. Create `shared/mcp/manager.py` with `MCPConnectionManager` class. Constructor takes `ACAPDefinition` and `ArcadeDBClient`. Method: `read(server_url: str, resource_path: str, params: dict | None = None) -> str`. The read method must:
-   1. Call `enforcer.check_mcp_connection(server_url)` before making any network call — raises `ACAPViolationError` if not permitted
+   1. Call `enforcer.check_mcp_connection(server_url)` before making any network call
    2. Make the MCP read request via httpx
-   3. Log an `AgentAction` event via `emit_validated` with `tool='mcp_read'`, payload including `server_url` and `resource_path`
+   3. Log an `AgentAction` event via `emit_validated`
    4. Return the raw response content as a string
-2. The manager must never cache MCP responses — agents always get current state from the artifact source.
-3. Add a `list_permitted_connections() -> list[str]` method that returns the ACAP's `permitted_mcp_connections` without making any network call.
+2. The manager must never cache MCP responses.
+3. Add a `list_permitted_connections() -> list[str]` method.
 
 **Done when:**
 - `read()` raises `ACAPViolationError` for unpermitted servers before any network call
@@ -430,7 +439,6 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Inputs:**
 - TASK-06 schema models
-- `config/schema/` directory
 
 **Outputs:**
 - `config/schema/v1.py`
@@ -442,354 +450,409 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 **Steps:**
 
-1. Create JSON Schema (as YAML) files for:
-   - `mtp_schema.yaml` (validates `mtp.yaml` project config)
-   - `acap_schema.yaml` (validates `acap_overrides.yaml`)
-   - `mandate_schema.yaml` (validates exploratory agent mandate definitions)
-   
-   These are the public configuration API — treat them as versioned contracts.
+1. Create JSON Schema (as YAML) files for `mtp_schema.yaml`, `acap_schema.yaml`, and `mandate_schema.yaml`. These are versioned public contracts.
 2. Create `config/schema/v1.py` that exposes the schemas as Python dicts for programmatic validation.
-3. Create `shared/config/loader.py` with `load_project_config(config_path: str) -> ProjectConfig` that:
-   1. Reads `mtp.yaml`, `acap_overrides.yaml`, and `mandates/` from the `config_path` directory
-   2. Validates each against its schema using `jsonschema`
-   3. Raises `ConfigValidationError` with field path and constraint violated if validation fails
-   4. Returns a typed `ProjectConfig` dataclass
-4. `ProjectConfig` must have: `mtp`: `MTPDocument`, `acap_overrides`: `dict[str, dict]`, `mandates`: `list[MandateDefinition]`. `MandateDefinition`: `name` (str), `domain` (str), `polling_interval_minutes` (int), `signal_threshold` (float), `search_queries` (list[str]).
+3. Create `shared/config/loader.py` with `load_project_config(config_path: str) -> ProjectConfig`.
+4. `ProjectConfig` must have: `mtp`: `MTPDocument`, `acap_overrides`: `dict[str, dict]`, `mandates`: `list[MandateDefinition]`. `MandateDefinition`: `name` (str), `domain` (str), `polling_interval_minutes` (int), `signal_threshold` (float), `observation_modes` (list[Literal['web_search','mcp']]).
+
+   Note: `search_queries` has been removed from `MandateDefinition`. The mandate defines the domain and observation capability; active focuses and MTP purpose provide the direction at runtime.
 
 **Done when:**
-- `load_project_config` succeeds on the reference config created in TASK-31
+- `load_project_config` succeeds on the reference config created in TASK-32
 - `load_project_config` raises `ConfigValidationError` with field path on invalid config
 - mypy strict passes
 - Unit tests cover valid config, missing fields, and wrong types
 
 ---
 
-## Phase D — Agent Implementations
+## Phase D — Schema Migration
 
-### - [x] TASK-14: Build exploratory agent
+### - [x] TASK-14-M: Migrate completed code to revised schema
 
 **Inputs:**
-- TASK-08 ArcadeDB client
-- TASK-13 config loader
+- TASK-04 through TASK-13 complete
+- This revised plan
 
 **Outputs:**
-- `agents/exploratory/__init__.py`
-- `agents/exploratory/graph.py`
-- `agents/exploratory/nodes.py`
-- `agents/exploratory/state.py`
-- `tools/search_graph.py`
-- `tools/search_signals.py`
-- `tools/emit_signal.py`
-- `tools/__init__.py`
+- Updated `schema/timeseries/event_log.py`
+- Updated `schema/timeseries/migrations/0002_revise_event_log_types.sql`
+- Updated `schema/identity/models.py`
+- Updated `schema/identity/migrations/0002_add_focus_commitment.sql`
+- Updated `shared/arcadedb/identity.py`
+- Updated `shared/event_schemas/validator.py`
+- Updated `shared/acap/exceptions.py`
+- Updated `shared/openrouter/models.py`
+- Updated `agents/exploratory/state.py`
 
-**Design: Two exploratory agent variants**
+**Steps:**
 
-The exploratory agent has two modes, controlled by `agent_type` in the mandate:
+1. Update `schema/timeseries/event_log.py`: merge `AgentFinding` into `AgentSignal` by adding `stage: Literal['observation','finding']`, `claim: str`, `reasoning: str`, `sources: list[str]` fields. Remove `AgentFinding` class. Add `WorkerStarted` and `WorkerCompleted` event types to `AgentAction` payload schema (no new TimeSeries type needed — use `AgentActions`).
+2. Create migration `0002_revise_event_log_types.sql`: add `stage`, `claim`, `reasoning`, `sources` fields to `AgentSignals` TimeSeries type. Drop `AgentFindings` TimeSeries type if it exists.
+3. Update `schema/identity/models.py`: rename `ObjectiveRecord` to `CommitmentRecord`, rename `objective_id` fields to `commitment_id`, add `FocusRecord` model, update `CommitmentRecord.status` to include `'pending_approval'`, `'approved'`, `'rejected'`, `'deferred'`. Add `plan: str | None` field to `CognitiveCheckpoint`.
+4. Create migration `0002_add_focus_commitment.sql`: create `FocusRecord` document type, rename `ObjectiveRecord` to `CommitmentRecord`, add new status values and fields.
+5. Update all references throughout `shared/` and `agents/exploratory/` to use `focus_id` instead of `objective_id`, `CommitmentRecord` instead of `ObjectiveRecord`, and the revised event types.
+6. Update `shared/openrouter/models.py`: add `RESEARCH_PLAN` and `IMPLEMENTATION` to `AgentRole`, add `KIMI` to `ModelFamily`, rename `OBJECTIVE` role to `RESEARCH_PLAN`.
 
-1. **Free explorer** (`agent_type: "free"`) — investigates a domain with no pre-set
-   direction. The LLM starts by querying the knowledge graph to see what's already
-   known, then explores gaps independently. Emits `AgentSignal` events for novel
-   discoveries.
-2. **Focus follower** (`agent_type: "focus"`) — follows a specific
-   `ObjectiveRecord` from the registry. The objective's domain, checkpoint context,
-   and recommended next action guide the investigation. Still emits signals for
-   novel findings discovered along the way.
+**Done when:**
+- `schema/migrate.py` applies both migrations idempotently
+- `validate_event` handles `AgentSignal` with `stage` field correctly
+- `validate_event` rejects events with `event_type='AgentFinding'` (removed type)
+- All references to `objective_id` in completed code replaced with `focus_id`
+- mypy strict passes across all updated files
+- Unit tests updated to match revised schemas
 
-Both variants use the same tools (`search_graph`, `search_signals`, `emit_signal`)
-via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
+---
 
-**Tools (shared — `tools/` package):**
-- `search_graph(domain, query)` — queries knowledge graph for existing nodes
-- `search_signals(domain, query)` — queries event log for recent signals
-- `emit_signal(observation, domain, confidence, is_novel)` — emits validated signal
+## Phase E — Agent Implementations
+
+### - [x] TASK-14 (now TASK-15): Build exploratory agent
+
+*Previously TASK-14 — completed. Directory and entry point reference `agents/exploratory/`. No renumbering of files required.*
+
+**Design: Two exploratory agent modes**
+
+1. **Free explorer** (`agent_type: "free"`) — investigates a domain with no specific focus. Oriented toward the MTP and active focuses as context. Looks for what is not currently being looked for.
+2. **Focus follower** (`agent_type: "focus"`) — spawned against a specific `FocusRecord`. Oriented toward finding observations that create leverage toward that focus.
+
+Both modes use the same tools (`search_graph`, `search_signals`, `emit_signal`) via `ChatOpenRouter` with `bind_tools()` and `ToolNode`.
 
 **System prompts:**
 
 *Free explorer:*
-> "Explore the domain freely. Use `search_graph` to discover what is already
-> known and identify gaps. Before reporting any finding, check whether it is
-> already known. Only call `emit_signal` for genuinely novel observations."
+```
+You are a scout operating in the {domain} domain.
+
+Organisational purpose: {mtp_purpose}
+
+Constraints you must never violate:
+{mtp_constraints}
+
+What we are currently pursuing:
+{active_focuses_summary}
+
+This is context, not direction. You are looking for what is happening in this
+domain that the organisation should know about, is not currently looking for,
+and would care about given its purpose.
+
+You have access to: {permitted_tools}
+
+For each finding, state:
+- What you observed
+- Why it matters given the organisational purpose
+- Whether it suggests a new focus, or challenges an assumption behind an existing one
+- Your confidence and the basis for it
+
+Contradictions and surprises are more valuable than confirmations.
+```
 
 *Focus follower:*
-> "Investigate this specific focus. Use `search_graph` to understand what
-> is already known. Only call `emit_signal` for genuinely novel observations."
+```
+You are a scout operating in the {domain} domain.
+
+Organisational purpose: {mtp_purpose}
+
+Constraints you must never violate:
+{mtp_constraints}
+
+Your focus:
+{focus_description}
+
+Find observations that create leverage toward this focus — things that would
+move it forward, remove a blocker, or reveal that its assumptions are wrong.
+
+You have access to: {permitted_tools}
+
+For each finding, state:
+- What you observed
+- How it relates to the focus
+- Whether it confirms, extends, or contradicts current understanding
+- Your confidence and the basis for it
+
+When you have exhausted productive lines of investigation, stop.
+```
 
 **Steps:**
 
-1. Create `agents/exploratory/state.py` with `ExploratoryState` TypedDict:
-   `mandate`, `mtp_version`, `agent_id`, `last_cursor`, `messages`,
-   `signals_emitted`, `run_at`, `max_iterations`, `completed`, `focus_id`.
-
-2. Create `tools/search_graph.py`, `tools/search_signals.py`, `tools/emit_signal.py`
-   — `@tool`-decorated factory functions taking `ArcadeDBClient` (and agent identity
-   for `emit_signal`). Shared across all agent types.
-
-3. Create `agents/exploratory/nodes.py` with async node functions:
-   - `load_context(state, db_client)` loads MTP version from identity store
-   - `observe(state, model, tools)` runs a ReAct loop using `ChatOpenRouter` with
-     `bind_tools(tools)` + `ToolNode`. The LLM iterates: investigate → query graph/signals
-     → emit or skip → report summary. Loop ends at max iterations or when the LLM
-     returns a summary.
-   - `update_cursor(state)` sets `last_cursor` to `now()`
-
-4. Create `agents/exploratory/graph.py` composing the nodes into a LangGraph
-   `StateGraph`: `load_context` → `observe` → `update_cursor` → `END`.
-   Compile with optional `PostgresSaver` checkpointer.
-
-5. Entry point: `run_exploratory_agent(config_path, mandate_name)` loads config,
-   creates `ChatOpenRouter` with model + provider routing from `MODEL_ASSIGNMENTS` +
-   `PROVIDER_ROUTING`, creates tools, builds graph, invokes.
+*(Completed — preserved from original TASK-14. State uses `focus_id` per TASK-14-M migration.)*
 
 **Done when:**
-- Graph compiles without error
-- `search_graph` queries ArcadeDB graph for existing nodes before LLM emits
-- `search_signals` queries event log for recent duplicates
-- LLM calls `emit_signal` only for genuinely novel observations
-- Free explorer uses free-exploration prompt; objective follower uses objective prompt
-- All emitted signals carry `agent_id`, `objective_id`, `mtp_version`, `ts`
-- mypy strict passes
+- *(Completed)*
 
 ---
 
-### - [ ] TASK-15: Build verification agent as LangGraph subgraph
+### - [ ] TASK-15: Build verification agent
 
 **Inputs:**
-- TASK-08, TASK-09, TASK-10, TASK-11
-- Requirement: must use different model family from originating agent
+- TASK-08, TASK-09, TASK-10, TASK-11 complete
+- TASK-14-M schema migration complete
 
 **Outputs:**
 - `agents/verification/__init__.py`
-- `agents/verification/graph.py`
 - `agents/verification/nodes.py`
 - `agents/verification/state.py`
+- `agents/verification/graph.py`
+- `agents/verification/__main__.py`
+
+**Design:**
+
+The verification agent is an independent background worker that polls the event log for `AgentSignal` events with `stage='observation'` and `confidence >= signal_threshold` that have not yet been verified. For each, it challenges the claim adversarially using a different model family and emits a new `AgentSignal` with `stage='finding'`.
+
+This agent does not receive instructions from any other agent. It discovers work by polling.
 
 **Steps:**
 
-1. Create `agents/verification/state.py` with `VerificationState` TypedDict: `finding` (`AgentFinding`), `originating_model_family` (`ModelFamily`), `mtp_version` (str), `agent_id` (str), `objective_id` (str), `investigation_steps` (list[str]), `verdict` (Literal['confirmed','contradicted','inconclusive'] | None), `verdict_confidence` (float | None), `verdict_rationale` (str | None).
-2. Create `agents/verification/nodes.py`:
-   - `enforce_independence(state)` calls `enforce_independence(AgentRole.VERIFICATION, state['originating_model_family'])` — raises `ModelFamilyError` if same family
-   - `investigate(state)` uses OpenRouter `VERIFICATION` role to independently investigate the finding with an adversarial system prompt: "Your task is to determine whether the following finding is false. Assume it is wrong and attempt to disprove it. Only conclude it is confirmed if you cannot find evidence against it." The investigate node must query ArcadeDB for contrary evidence and use MCP connections permitted by ACAP
-   - `emit_verdict(state)` calls `emit_validated` with an `AgentFinding` event carrying `verdict`, `verdict_confidence`, `verdict_rationale`
-3. Create `agents/verification/graph.py` as a compiled `StateGraph`: `enforce_independence` → `investigate` → `emit_verdict` → `END`. This graph is designed to be used as a subgraph node within the orchestration graph — it is not run standalone.
-4. Export `build_verification_subgraph() -> CompiledGraph` factory function.
+1. Create `agents/verification/state.py` with `VerificationState` TypedDict: `signal` (`AgentSignal`), `originating_model_family` (`ModelFamily`), `mtp_version` (str), `agent_id` (str), `focus_id` (str | None), `verdict` (Literal['confirmed','contradicted','inconclusive'] | None), `verdict_confidence` (float | None), `verdict_rationale` (str | None).
+
+2. Create `agents/verification/nodes.py` with async node functions:
+   - `poll_for_observations(state)` — queries ArcadeDB `AgentSignals` for unverified `stage='observation'` signals above the configured `signal_threshold`. Uses cursor-based polling with `last_cursor` persisted between runs. Returns the oldest unprocessed signal or sets `completed=True` if none found.
+   - `enforce_independence(state)` — calls `enforce_independence(AgentRole.VERIFICATION, state['originating_model_family'])`. Raises `ModelFamilyError` if same family.
+   - `investigate(state)` — uses OpenRouter `VERIFICATION` role with adversarial system prompt to challenge the signal's `claim`. Queries ArcadeDB knowledge graph and permitted MCP connections for contrary evidence. System prompt: *"Your task is to determine whether the following claim is false. Assume it is wrong and attempt to disprove it. Only conclude it is confirmed if you cannot find evidence against it. Claim: {claim}. Reasoning given: {reasoning}."*
+   - `emit_finding(state)` — emits a new `AgentSignal` with `stage='finding'`, `claim` (same as original or refined), `verdict`, `verdict_confidence`, `verdict_rationale`, `sources` (combined from original signal and investigation).
+
+3. Create `agents/verification/graph.py` as a compiled `StateGraph`: `poll_for_observations` → conditional edge (if signal found → `enforce_independence` → `investigate` → `emit_finding` → loop back to `poll_for_observations`, else → `END`).
+
+4. Create `agents/verification/__main__.py` entry point: `run_verification_agent(config_path: str) -> None` that loops continuously with a configurable polling interval (default 60 seconds).
 
 **Done when:**
-- `enforce_independence` node raises `ModelFamilyError` when families match
-- `investigate` node system prompt is adversarial (contains language about disproving)
-- `emit_verdict` always emits a finding event before the subgraph exits
-- Subgraph can be added as a node to a parent `StateGraph` without error
+- Agent polls ArcadeDB independently with cursor-based state
+- `enforce_independence` raises `ModelFamilyError` when model families match
+- `investigate` system prompt is adversarial
+- `emit_finding` always emits a `stage='finding'` signal before the loop continues
+- Agent runs standalone: `python -m agents.verification`
 - mypy strict passes
 
 ---
 
-### - [ ] TASK-16: Build objective agent as LangGraph subgraph
+### - [ ] TASK-16: Build research/plan agent
 
 **Inputs:**
-- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12
+- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
+- TASK-14-M schema migration complete
 
 **Outputs:**
-- `agents/objective/__init__.py`
-- `agents/objective/graph.py`
-- `agents/objective/nodes.py`
-- `agents/objective/state.py`
+- `agents/research_plan/__init__.py`
+- `agents/research_plan/nodes.py`
+- `agents/research_plan/state.py`
+- `agents/research_plan/graph.py`
+- `agents/research_plan/__main__.py`
+
+**Design:**
+
+The research/plan agent polls for `AgentSignal` events with `stage='finding'` and `verdict='confirmed'` where no `CommitmentRecord` yet exists for the signal's `focus_id`. When it finds one, it creates a `CommitmentRecord`, runs a research loop to understand the problem space deeply, and produces a plan. The plan is written to a `CognitiveCheckpoint` on the commitment and the commitment is marked `pending_approval`. A human then reviews the plan before implementation proceeds.
+
+This agent earns being a LangGraph graph because the research loop has genuine internal complexity — it reads the knowledge graph, reads artifacts, reads the event delta, forms hypotheses, checks hypotheses, and may loop back if understanding is insufficient.
 
 **Steps:**
 
-1. Create `agents/objective/state.py` with `ObjectiveState` TypedDict: `objective` (`ObjectiveRecord`), `mtp_version` (str), `agent_id` (str), `graph_context` (list[GraphNode]), `artifact_context` (list[str]), `event_delta` (list[dict]), `hypothesis` (str | None), `checkpoint` (`CognitiveCheckpoint` | None), `plan` (str | None), `actions_taken` (list[str]).
-2. Create `agents/objective/nodes.py` with the research loop nodes:
-   - `traverse_graph(state)` queries ArcadeDB graph from the objective's domain node outward `max_depth=3`
-   - `read_artifacts(state)` uses `MCPConnectionManager` to read structural artifacts identified in `graph_context` — enforces ACAP on each read
-   - `read_event_delta(state)` polls ArcadeDB event log for events since the last checkpoint timestamp
-   - `form_hypothesis(state)` uses OpenRouter `OBJECTIVE` role to synthesise `graph_context`, `artifact_context`, and `event_delta` into a hypothesis
-   - `write_checkpoint(state)` calls `write_checkpoint()` on ArcadeDB identity store with the current `CognitiveCheckpoint` — must occur at this node boundary
-   - `execute_plan(state)` uses OpenRouter `OBJECTIVE` role to execute the plan, emitting `AgentAction` events for each action
-   - `promote_findings(state)` emits `AgentFinding` events for durable findings to be promoted by orchestration at closure
-3. Create `agents/objective/graph.py`: `traverse_graph` → `read_artifacts` → `read_event_delta` → `form_hypothesis` → `write_checkpoint` → `execute_plan` → `promote_findings` → `END`.
-4. The `write_checkpoint` node must always execute even if a previous node raises — use LangGraph's error handling to ensure checkpoint writes are not skipped.
-5. Export `build_objective_subgraph() -> CompiledGraph` factory function.
+1. Create `agents/research_plan/state.py` with `ResearchPlanState` TypedDict: `signal` (`AgentSignal`), `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `graph_context` (list[GraphNode]), `artifact_context` (list[str]), `event_delta` (list[dict]), `hypotheses` (list[HypothesisRecord]), `current_understanding` (str | None), `plan` (str | None), `iteration` (int), `max_iterations` (int), `completed` (bool).
+
+2. Create `agents/research_plan/nodes.py` with async node functions:
+   - `poll_for_findings(state)` — queries ArcadeDB `AgentSignals` for verified `stage='finding'` signals with no corresponding `CommitmentRecord`. Uses cursor-based polling.
+   - `create_commitment(state)` — creates a `CommitmentRecord` with `status='active'` for the signal's `focus_id`.
+   - `traverse_graph(state)` — queries ArcadeDB graph from the focus domain node outward `max_depth=3`.
+   - `read_artifacts(state)` — uses `MCPConnectionManager` to read structural artifacts identified in `graph_context`.
+   - `read_event_delta(state)` — polls event log for signals in this domain since the last checkpoint timestamp.
+   - `form_understanding(state)` — uses OpenRouter `RESEARCH_PLAN` role to synthesise `graph_context`, `artifact_context`, and `event_delta` into hypotheses and a current best understanding.
+   - `write_checkpoint(state)` — writes `CognitiveCheckpoint` to ArcadeDB. Must always execute even if a previous node raises.
+   - `produce_plan(state)` — uses OpenRouter `RESEARCH_PLAN` role to produce a concrete, step-by-step implementation plan from the current understanding. Writes plan to checkpoint.
+   - `mark_pending_approval(state)` — updates `CommitmentRecord` status to `pending_approval`.
+
+3. Create `agents/research_plan/graph.py`: `poll_for_findings` → conditional edge (if finding → `create_commitment` → `traverse_graph` → `read_artifacts` → `read_event_delta` → `form_understanding` → `write_checkpoint` → conditional edge (if understanding sufficient or max_iterations reached → `produce_plan` → `mark_pending_approval` → loop to `poll_for_findings`, else → loop back to `traverse_graph`), else → `END`).
+
+4. Compile with `PostgresSaver` checkpointer — this agent may run for extended periods and must survive restarts.
+
+5. Create `agents/research_plan/__main__.py` entry point: `run_research_plan_agent(config_path: str) -> None`.
 
 **Done when:**
-- Research loop executes in correct order (graph → artifacts → events → hypothesis)
-- `write_checkpoint` is called before `execute_plan`
-- A simulated mid-execution failure still results in a checkpoint being written
-- Artifact reads are logged as `AgentAction` events
+- Agent polls independently and creates commitments without external orchestration
+- Research loop traverses graph → artifacts → events → understanding in correct order
+- `write_checkpoint` executes even when a preceding node raises
+- Commitment is marked `pending_approval` with plan in checkpoint before agent moves on
+- `PostgresSaver` checkpointer is configured and survives a simulated restart
+- Agent runs standalone: `python -m agents.research_plan`
 - mypy strict passes
 
 ---
 
-## Phase E — Orchestration and Subagents
+### - [ ] TASK-17: Build implementation agent
 
-### - [ ] TASK-17: Build knowledge promotion logic
+**Inputs:**
+- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
+- TASK-14-M schema migration complete
+
+**Outputs:**
+- `agents/implementation/__init__.py`
+- `agents/implementation/nodes.py`
+- `agents/implementation/state.py`
+- `agents/implementation/graph.py`
+- `agents/implementation/__main__.py`
+
+**Design:**
+
+The implementation agent polls the commitment registry for `CommitmentRecord` entries with `status='approved'`. When it finds one, it reads the plan from the `CognitiveCheckpoint`, executes it step by step, runs tests, and marks the commitment complete or stalled.
+
+This agent must survive restarts mid-execution — `PostgresSaver` checkpointing is mandatory.
+
+**Steps:**
+
+1. Create `agents/implementation/state.py` with `ImplementationState` TypedDict: `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `plan` (str), `checkpoint` (`CognitiveCheckpoint`), `actions_taken` (list[str]), `files_modified` (list[str]), `test_results` (dict[str, Any] | None), `status` (Literal['in_progress','complete','failed']).
+
+2. Create `agents/implementation/nodes.py` with async node functions:
+   - `poll_for_approved(state)` — queries commitment registry for `status='approved'` commitments. Uses cursor-based polling.
+   - `load_plan(state)` — reads the execution plan from the commitment's `CognitiveCheckpoint`.
+   - `execute_plan(state)` — uses OpenRouter `IMPLEMENTATION` role to execute the plan step-by-step, emitting `AgentAction` events for each file operation. Enforces ACAP boundaries on all operations.
+   - `run_tests(state)` — executes test suite and captures results.
+   - `write_outcome(state)` — marks commitment `complete` on success or `stalled` on failure. Writes final checkpoint.
+   - `promote_findings(state)` — emits `AgentSignal` events with `stage='finding'` for durable knowledge discovered during implementation, for knowledge graph promotion.
+
+3. Create `agents/implementation/graph.py`: `poll_for_approved` → conditional edge (if commitment found → `load_plan` → `execute_plan` → `run_tests` → `write_outcome` → `promote_findings` → loop to `poll_for_approved`, else → `END`). Compile with `PostgresSaver` checkpointer.
+
+4. Create `agents/implementation/__main__.py` entry point.
+
+5. The agent must only process commitments with `status='approved'`. Validate at `load_plan` and raise if status has changed since polling.
+
+**Done when:**
+- Agent polls independently without external orchestration
+- `execute_plan` enforces ACAP boundaries — unpermitted operations raise `ACAPViolationError`
+- Agent only processes approved commitments
+- All file operations are logged as `AgentAction` events
+- On completion, commitment status is updated to `complete`
+- On failure, checkpoint is written and commitment is marked `stalled`
+- `PostgresSaver` checkpointer survives a simulated mid-execution restart
+- Agent runs standalone: `python -m agents.implementation`
+- mypy strict passes
+
+---
+
+### - [ ] TASK-18: Build knowledge promotion logic
 
 **Inputs:**
 - TASK-05 graph schema
 - TASK-08 ArcadeDB client
 
 **Outputs:**
-- `agents/orchestration/promotion.py`
+- `shared/promotion/__init__.py`
+- `shared/promotion/classifier.py`
 
 **Steps:**
 
-1. Create `agents/orchestration/promotion.py` with `classify_for_promotion(finding: AgentFinding, existing_nodes: list[GraphNode]) -> PromotionDecision`. `PromotionDecision` is a dataclass with: `action` (Literal['discard','promote_durable','promote_medium','reinforce','return_to_log']), `node_type` (str | None), `confidence` (float | None), `rationale` (str).
+1. Create `shared/promotion/classifier.py` with `classify_for_promotion(signal: AgentSignal, existing_nodes: list[GraphNode]) -> PromotionDecision`. `PromotionDecision` is a dataclass with: `action` (Literal['discard','promote_durable','promote_medium','reinforce','return_to_log']), `node_type` (str | None), `confidence` (float | None), `rationale` (str).
+
 2. Classification rules:
-   - If `finding.payload` contains `'hypothesis_conclusion': 'rejected'` → `action='promote_durable'`, `node_type='InvestigationFinding'` with `NEGATIVE_KNOWLEDGE` edge
-   - If `finding.payload` contains `'structural_discovery'` → `action='promote_durable'`, `node_type='ProductStructure'`
-   - If finding matches an existing node (semantic similarity via embedding comparison) → `action='reinforce'`
-   - If `finding.confidence < 0.5` → `action='return_to_log'`
-   - If finding contains operational state (action logs, intermediate steps) → `action='discard'`
+   - If `signal.payload` contains `'hypothesis_conclusion': 'rejected'` → `action='promote_durable'`, `node_type='InvestigationFinding'` with `NEGATIVE_KNOWLEDGE` edge
+   - If `signal.payload` contains `'structural_discovery'` → `action='promote_durable'`, `node_type='ProductStructure'`
+   - If signal matches an existing node (semantic similarity) → `action='reinforce'`
+   - If `signal.confidence < 0.5` → `action='return_to_log'`
+   - If signal contains operational state → `action='discard'`
    - Default for customer/competitor findings → `action='promote_medium'`
-3. Create `promote_findings(client: ArcadeDBClient, findings: list[AgentFinding]) -> PromotionSummary` that classifies each finding and executes the correct ArcadeDB operation.
+
+3. Create `promote_signals(client: ArcadeDBClient, signals: list[AgentSignal]) -> PromotionSummary` that classifies each signal and executes the correct ArcadeDB operation.
 
 **Done when:**
-- `classify_for_promotion` returns `'discard'` for operational state
-- `classify_for_promotion` returns `'promote_durable'` for rejected hypotheses with `NEGATIVE_KNOWLEDGE` edge
-- `classify_for_promotion` returns `'reinforce'` when a matching node exists
+- `classify_for_promotion` returns correct action for all five cases
 - Unit tests cover all five classification outcomes
 - mypy strict passes
 
 ---
 
-### - [ ] TASK-18: Build orchestration agent
+## Phase F — Orchestration
+
+### - [ ] TASK-19: Build orchestration agent
 
 **Inputs:**
-- TASK-14, TASK-15, TASK-16, TASK-17 complete
-- TASK-08, TASK-09, TASK-10
+- TASK-08, TASK-18 complete
 
 **Outputs:**
 - `agents/orchestration/__init__.py`
-- `agents/orchestration/graph.py`
 - `agents/orchestration/nodes.py`
 - `agents/orchestration/state.py`
+- `agents/orchestration/graph.py`
+- `agents/orchestration/__main__.py`
+
+**Design:**
+
+The orchestration agent is intentionally thin. It does not coordinate agent execution — each agent polls independently. Its responsibilities are:
+
+1. **Health monitoring** — detect workers that have emitted `WorkerStarted` but not `WorkerCompleted` within the expected window. Escalate stalled workers.
+2. **Commitment health** — detect commitments with no checkpoint within the stall window. Escalate stalled commitments.
+3. **Knowledge graph promotion** — trigger `promote_signals()` for signals from closed commitments.
+4. **Decay maintenance** — periodically run `apply_decay_all()` to decay knowledge graph confidence scores.
+5. **Escalation** — write escalation events for ACAP violations, resource ceiling breaches, and stalled agents/commitments.
+
+The orchestration agent does NOT: spawn other agents, embed subgraphs, route signals, or make content decisions.
 
 **Steps:**
 
-1. Create `agents/orchestration/state.py` with `OrchestrationState` TypedDict: `mtp_version` (str), `agent_id` (str), `signal_density` (dict[str, float]), `active_objectives` (list[ObjectiveRecord]), `stalled_objectives` (list[str]), `escalations_pending` (list[str]), `verification_input` (`AgentFinding` | None), `verification_output` (`VerificationState` | None), `objective_input` (`ObjectiveRecord` | None), `objective_output` (`ObjectiveState` | None), `promotion_pending` (list[AgentFinding]).
+1. Create `agents/orchestration/state.py` with `OrchestrationState` TypedDict: `mtp_version` (str), `agent_id` (str), `active_workers` (list[dict]), `stalled_commitments` (list[str]), `escalations_pending` (list[str]), `promotion_pending` (list[AgentSignal]), `last_decay_run` (datetime | None).
+
 2. Create `agents/orchestration/nodes.py`:
-   - `monitor_signals(state)` polls `AgentSignals` from ArcadeDB for the last polling window, computes signal density per domain
-   - `detect_stalls(state)` queries `ObjectiveRegistry` for objectives with no checkpoint in the last N minutes (configurable)
-   - `create_objective(state)` creates a new `ObjectiveRecord` when signal density exceeds threshold
-   - `escalate(state)` writes escalation events for: resource ceiling breach, inconclusive verification above threshold, ACAP violation detected
-   - `trigger_promotion(state)` calls `promote_findings()` for all completed objectives
-   - `check_human_queue(state)` reads the escalation queue and logs current pending items
-3. Create `agents/orchestration/graph.py` composing the orchestration loop and embedding verification and objective subgraphs as nodes: `monitor_signals` → `detect_stalls` → conditional edge (if high-density signal → `run_verification` using verification subgraph) → conditional edge (if verified finding → `run_objective` using objective subgraph) → `trigger_promotion` → `escalate` → `check_human_queue` → `END`. The orchestration graph loops — add a cycle edge back to `monitor_signals` for background worker continuous operation.
-4. Embed subgraphs: `orchestration_graph.add_node('run_verification', build_verification_subgraph())`. `orchestration_graph.add_node('run_objective', build_objective_subgraph())`.
-5. Compile with `PostgresSaver` checkpointer. Entry point: `run_orchestration_loop(config_path: str) -> None`.
+   - `check_worker_health(state)` — polls `AgentActions` for `WorkerStarted` events without a matching `WorkerCompleted` within the configured window. Adds stalled workers to `escalations_pending`.
+   - `check_commitment_health(state)` — queries commitment registry for `status='active'` commitments with no checkpoint in the last N minutes.
+   - `run_promotion(state)` — calls `promote_signals()` for signals from commitments that have moved to `complete` since the last promotion run.
+   - `run_decay(state)` — calls `apply_decay_all()` if more than 24 hours since `last_decay_run`.
+   - `escalate(state)` — writes escalation events for all items in `escalations_pending`.
+
+3. Create `agents/orchestration/graph.py`: `check_worker_health` → `check_commitment_health` → `run_promotion` → `run_decay` → `escalate` → `END`. The orchestration agent runs on a schedule (every 5 minutes) rather than continuously.
+
+4. Create `agents/orchestration/__main__.py` entry point.
 
 **Done when:**
-- Orchestration graph compiles with embedded verification and objective subgraphs
-- `monitor_signals` correctly computes signal density from ArcadeDB poll results
-- `detect_stalls` identifies objectives with no recent checkpoint
-- `escalate` writes escalation events for all three escalation conditions
-- `trigger_promotion` calls `promote_findings` for closed objectives
+- Orchestration agent detects a stalled worker and writes an escalation event
+- `run_promotion` calls `promote_signals` for completed commitment signals
+- `run_decay` only runs when 24+ hours have elapsed since last run
+- Agent runs standalone: `python -m agents.orchestration`
 - mypy strict passes
 
 ---
 
-### - [ ] TASK-19: Build implementation agent
+## Phase G — Human Approval UI
+
+### - [ ] TASK-20: Build human approval UI
 
 **Inputs:**
-- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
-- TASK-16 objective agent complete
+- TASK-16 research/plan agent complete (produces `pending_approval` commitments)
+- TASK-17 implementation agent complete (polls for `approved` commitments)
 
 **Outputs:**
-- `agents/implementation/__init__.py`
-- `agents/implementation/graph.py`
-- `agents/implementation/nodes.py`
-- `agents/implementation/state.py`
-
-**Steps:**
-
-1. Create `agents/implementation/state.py` with `ImplementationState` TypedDict: `objective` (`ObjectiveRecord`), `mtp_version` (str), `agent_id` (str), `plan` (str), `checkpoint` (`CognitiveCheckpoint`), `actions_taken` (list[str]), `files_modified` (list[str]), `test_results` (dict[str, Any] | None), `status` (Literal['in_progress', 'complete', 'failed']).
-2. Create `agents/implementation/nodes.py` with async node functions:
-   - `load_plan(state)` reads the execution plan from the objective's cognitive checkpoint
-   - `execute_plan(state)` uses OpenRouter `IMPLEMENTATION` role to execute the plan step-by-step, emitting `AgentAction` events for each file operation and tool usage
-   - `run_tests(state)` executes test suite and captures results
-   - `update_objective(state)` marks objective as `complete` on success or `stalled` on failure, writes final checkpoint
-   - `promote_findings(state)` calls `promote_findings()` for durable findings discovered during implementation
-3. Create `agents/implementation/graph.py` composing the nodes into a LangGraph `StateGraph`: `load_plan` → `execute_plan` → `run_tests` → `update_objective` → `promote_findings` → `END`. Compile with `PostgresSaver` checkpointer.
-4. The `execute_plan` node must enforce ACAP boundaries on all file operations and tool usage. Add a test that attempts an unpermitted operation and verifies `ACAPViolationError` is raised.
-5. Entry point: `run_implementation_agent(config_path: str, objective_id: str) -> None` that loads config, builds the graph, and invokes it.
-6. The implementation agent must only process objectives with `implementation_status='approved'` and `implementation_state` in `['to_do', 'pending']`. Add validation at graph entry.
-
-**Done when:**
-- Graph compiles without error
-- `execute_plan` node enforces ACAP boundaries on all operations
-- Implementation agent only processes approved objectives
-- All file operations are logged as `AgentAction` events
-- On completion, objective status is updated to `complete`
-- On failure, checkpoint is written and objective is marked `stalled`
-- mypy strict passes
-
----
-
-## Phase E — Orchestration and Subagents
-
-### - [ ] TASK-20: Update orchestration agent for human approval workflow
-
-**Inputs:**
-- TASK-18 orchestration agent complete
-- TASK-19 implementation agent complete
-- REQ-HR-01 human gate requirement
-
-**Outputs:**
-- `agents/orchestration/nodes.py` (update)
-- `agents/orchestration/graph.py` (update)
-
-**Steps:**
-
-1. Update `agents/orchestration/nodes.py` to add:
-   - `mark_for_approval(state)` sets `implementation_status='pending_approval'` and `implementation_state='to_do'` on completed objectives
-   - `spawn_implementation(state)` spawns implementation agent for objectives with `implementation_status='approved'` and `implementation_state='to_do'`
-2. Update `agents/orchestration/graph.py` to add conditional edge after `trigger_promotion`: if objective has execution plan → `mark_for_approval` → `check_human_queue` → conditional edge (if approved objective exists → `spawn_implementation`) → `escalate` → `END`.
-3. The orchestration agent must poll for approved objectives and spawn implementation agents accordingly.
-
-**Done when:**
-- Orchestration agent marks completed objectives as `pending_approval`
-- Orchestration agent spawns implementation agents for approved objectives
-- Graph compiles with new approval workflow nodes
-- mypy strict passes
-
----
-
-## Phase F — Human Approval UI
-
-### - [ ] TASK-23: Build human approval UI with CopilotKit
-
-**Inputs:**
-- TASK-20 orchestration agent with approval workflow complete
-- REQ-HR-01 human gate requirement
-- CopilotKit framework
-
-**Outputs:**
-- `ui/` directory with CopilotKit-based React application
+- `ui/` directory with React application
 - `ui/package.json`
+- `ui/src/components/Dashboard.tsx`
 - `ui/src/components/ApprovalQueue.tsx`
 - `ui/src/components/ApprovalCard.tsx`
+- `ui/src/components/WorkerStatus.tsx`
+- `ui/src/components/CommitmentList.tsx`
 - `ui/src/api/arcadedb.ts`
 
 **Steps:**
 
-1. Create `ui/` directory with a CopilotKit-based React application for human approval workflow.
-2. Create `ui/package.json` with dependencies: `react`, `@copilotkit/react-core`, `@copilotkit/react-ui`, `axios`.
-3. Create `ui/src/api/arcadedb.ts` with functions to query ArcadeDB for objectives with `implementation_status='pending_approval'` and to update approval decisions.
-4. Create `ui/src/components/ApprovalQueue.tsx` that displays a list of pending approval items with plan details, context, and approve/reject/defer buttons.
-5. Create `ui/src/components/ApprovalCard.tsx` that renders a single approval item with: objective domain, execution plan summary, research context, approve/reject/defer buttons with optional comments.
-6. Implement approval workflow: when human approves, update objective with `implementation_status='approved'`, `approval_metadata` (reviewer_id, approved_at, comments). When human rejects, update with `implementation_status='rejected'`. When human defers, update with `implementation_status='deferred'`.
-7. Add authentication and reviewer identity tracking (integrate with existing auth system or add simple username/password for v1).
+1. Create `ui/` directory with a React application.
+2. Create `ui/package.json` with dependencies: `react`, `axios`.
+3. Create `ui/src/api/arcadedb.ts` with functions to:
+   - Query commitments by status
+   - Query active workers (via `WorkerStarted`/`WorkerCompleted` event log)
+   - Update commitment approval decisions
+4. Create `ui/src/components/Dashboard.tsx` as the root component with three panels:
+   - **Active Workers** — lists workers with `WorkerStarted` but no `WorkerCompleted`, showing agent type, start time, and domain.
+   - **Commitments in Progress** — lists active commitments with status, domain, last checkpoint time.
+   - **Recently Completed** — lists commitments that moved to `complete` in the last 24 hours.
+5. Create `ui/src/components/ApprovalQueue.tsx` — displays commitments with `status='pending_approval'` with plan details and context.
+6. Create `ui/src/components/ApprovalCard.tsx` — renders a single pending commitment with: domain, focus description, plan from checkpoint, research context (hypotheses investigated, current understanding), approve/reject/defer buttons with optional comments.
+7. Implement approval workflow: approve → `status='approved'`, reject → `status='rejected'`, defer → `status='deferred'`. Store `approval_metadata` (reviewer_id, decided_at, comments) on the commitment.
+8. Add simple username/password authentication for v1.
 
 **Done when:**
-- UI displays pending approval items with plan details and context
+- Dashboard displays active workers, in-progress commitments, and completed commitments
+- Approval queue shows pending plans with full research context
 - Human can approve, reject, or defer with optional comments
-- Approval decision is stored in ArcadeDB objective registry
-- Implementation agent only processes approved objectives
-- UI is built with CopilotKit and provides clear approval workflow
+- Approval decision is stored in ArcadeDB commitment registry
+- Implementation agent processes approved commitments
 - README includes instructions for running the UI locally
 
 ---
 
-## Phase G — Guardrails
+## Phase H — Guardrails
 
-### - [ ] TASK-24: Build guardrail ensemble
+### - [ ] TASK-21: Build guardrail ensemble
 
 **Inputs:**
 - WildGuard, Granite Guardian, ShieldGemma model access (via hosted API or HuggingFace)
@@ -803,35 +866,34 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 **Steps:**
 
 1. Create `guardrails/profiles/default.yaml` defining:
-   - `high_stakes_categories` (list — use OR logic: these categories block on either model flagging)
-   - `soft_categories` (list — use AND logic: both models must flag to block)
-2. Create `guardrails/ensemble.py` with `GuardrailEnsemble` class. Constructor: loads profile from `guardrails/profiles/`, initialises Presidio `AnalyzerEngine` and `AnonymizerEngine`. Method: `check(content: str, agent_id: str, objective_id: str, mtp_version: str) -> GuardrailResult`. `GuardrailResult`: `passed` (bool), `violations` (list[GuardrailViolation]), `redacted_content` (str | None). `GuardrailViolation`: `category` (str), `blocking_model` (str), `severity` (str).
+   - `high_stakes_categories` (list — OR logic: block if either model flags)
+   - `soft_categories` (list — AND logic: block only if both models flag)
+2. Create `guardrails/ensemble.py` with `GuardrailEnsemble` class. Method: `check(content: str, agent_id: str, focus_id: str | None, mtp_version: str) -> GuardrailResult`. `GuardrailResult`: `passed` (bool), `violations` (list[GuardrailViolation]), `redacted_content` (str | None).
 3. `check()` pipeline:
-   1. ShieldGemma pre-screen via API — if flagged for obvious harm, return immediately without calling heavier models
-   2. WildGuard input classification via API
-   3. Granite Guardian output validation via API
+   1. ShieldGemma pre-screen — if flagged for obvious harm, return immediately
+   2. WildGuard input classification
+   3. Granite Guardian output validation
    4. Apply OR/AND logic from profile
-   5. If passed, run Presidio PII redaction and return `redacted_content`
-   6. If blocked, emit an `AgentAction` event with violation details to ArcadeDB before returning
-4. For v1, guardrail model APIs may be stubbed with a configurable `GUARDRAILS_MODE` env var: `'live'` calls real APIs, `'stub_pass'` always passes (for dev), `'stub_block'` always blocks (for testing). Default to `'live'`.
-5. All agent output must pass through `check()` before delivery. Create a decorator `@guardrailed(agent_id, objective_id, mtp_version)` that wraps any async function returning `str` and applies the ensemble check.
+   5. If passed, run Presidio PII redaction
+   6. If blocked, emit `AgentAction` event with violation details
+4. `GUARDRAILS_MODE` env var: `'live'`, `'stub_pass'`, `'stub_block'`.
+5. Create `@guardrailed(agent_id, focus_id, mtp_version)` decorator.
 
 **Done when:**
-- `check()` returns `GuardrailResult` with `passed=False` for a known prompt injection payload
-- `check()` returns `redacted_content` with PII removed via Presidio
-- Violation events are emitted to ArcadeDB before returning a blocked result
-- `@guardrailed` decorator correctly intercepts output and applies `check()`
+- `check()` returns `passed=False` for a known prompt injection payload
+- `check()` returns `redacted_content` with PII removed
+- Violation events are emitted to ArcadeDB
 - `GUARDRAILS_MODE='stub_pass'` bypasses all API calls
 - mypy strict passes
 
 ---
 
-## Phase H — Observability
+## Phase I — Observability
 
-### - [ ] TASK-25: Configure Langfuse OpenTelemetry export
+### - [ ] TASK-22: Configure Langfuse OpenTelemetry export
 
 **Inputs:**
-- Langfuse Cloud account and API keys in environment
+- Langfuse Cloud account and API keys
 
 **Outputs:**
 - `shared/observability/__init__.py`
@@ -839,20 +901,20 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 
 **Steps:**
 
-1. Create `shared/observability/tracing.py`. Import and configure the Langfuse OpenTelemetry SDK. Create `configure_tracing(agent_type: str, agent_id: str, objective_id: str, mtp_version: str) -> None` that initialises the OTel tracer with Langfuse as the exporter and sets resource attributes: `agent_type`, `agent_id`, `objective_id`, `mtp_version`.
-2. Create a context manager `trace_llm_call(model: str, role: str) -> Iterator[Span]` that wraps any OpenRouter call and records: model name, input token count, output token count, estimated cost (compute from token counts and known per-token prices), latency in milliseconds.
-3. Wrap the `OpenRouterClient.complete()` method with `trace_llm_call` automatically — no agent code should need to call it manually.
-4. `configure_tracing` must be called at agent startup. If `LANGFUSE_SECRET_KEY` is not set, log a warning and use a no-op tracer rather than failing.
+1. Create `shared/observability/tracing.py`. Configure Langfuse OTel SDK. Create `configure_tracing(agent_type: str, agent_id: str, focus_id: str | None, mtp_version: str) -> None`.
+2. Create `trace_llm_call(model: str, role: str) -> Iterator[Span]` context manager recording: model, input/output token counts, estimated cost, latency.
+3. Wrap `OpenRouterClient.complete()` automatically.
+4. Missing Langfuse credentials → warning + no-op tracer, not a crash.
 
 **Done when:**
-- A test LLM call produces a trace visible in Langfuse Cloud with model, token counts, cost, and latency
-- `agent_type`, `agent_id`, `objective_id`, `mtp_version` appear as trace attributes
-- Missing Langfuse credentials produce a warning not a crash
+- Test LLM call produces a trace in Langfuse Cloud with model, tokens, cost, latency
+- `agent_type`, `agent_id`, `focus_id`, `mtp_version` appear as trace attributes
+- Missing credentials produce a warning not a crash
 - mypy strict passes
 
 ---
 
-### - [ ] TASK-26: Configure Prometheus custom metrics
+### - [ ] TASK-23: Configure Prometheus custom metrics
 
 **Inputs:**
 - `prometheus-client` library
@@ -862,29 +924,30 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 
 **Steps:**
 
-1. Create `shared/observability/metrics.py` defining all five required custom metrics using `prometheus-client`:
-   - `signal_emission_total` (Counter, labels: `agent_id`, `domain`)
-   - `checkpoint_write_total` (Counter, labels: `objective_id`)
-   - `verification_verdict_total` (Counter, labels: `verdict` — confirmed/contradicted/inconclusive)
-   - `objective_completion_total` (Counter, labels: `domain`)
+1. Create `shared/observability/metrics.py` defining custom metrics:
+   - `signal_emission_total` (Counter, labels: `agent_id`, `domain`, `stage`)
+   - `checkpoint_write_total` (Counter, labels: `commitment_id`)
+   - `verification_verdict_total` (Counter, labels: `verdict`)
+   - `commitment_completion_total` (Counter, labels: `domain`)
    - `escalation_total` (Counter, labels: `reason`)
-2. Export increment functions for each: `record_signal_emitted(agent_id, domain)`, `record_checkpoint_written(objective_id)`, `record_verification_verdict(verdict)`, `record_objective_completed(domain)`, `record_escalation(reason)`. These are the only way agent code should update metrics — no direct Counter access.
-3. Start a Prometheus HTTP metrics server on port 9090 when `METRICS_ENABLED=true`. This is the endpoint Render's observability or an external scraper reads from.
+   - `worker_active_gauge` (Gauge, labels: `agent_type`)
+2. Export increment/set functions for each.
+3. Start Prometheus HTTP server on port 9090 when `METRICS_ENABLED=true`.
 
 **Done when:**
-- All five metric types are registered and incrementable
+- All metric types are registered and incrementable
 - Metrics server starts on port 9090 when `METRICS_ENABLED=true`
-- Unit test verifies each `record_` function increments the correct counter
+- Unit test verifies each function updates the correct metric
 - mypy strict passes
 
 ---
 
-## Phase I — Tests
+## Phase J — Tests
 
-### - [ ] TASK-27: Write unit tests for shared libraries
+### - [ ] TASK-24: Write unit tests for shared libraries
 
 **Inputs:**
-- TASK-08 through TASK-13 complete
+- TASK-08 through TASK-13, TASK-14-M complete
 
 **Outputs:**
 - `tests/unit/test_arcadedb_client.py`
@@ -898,12 +961,11 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 
 **Steps:**
 
-1. Write tests using pytest and pytest-asyncio. Mock all external calls (httpx, ArcadeDB, OpenRouter) using `unittest.mock` or `pytest-mock`.
-2. `test_acap_enforcer.py` must cover: permitted tool passes, unpermitted tool raises `ACAPViolationError`, violation is logged to ArcadeDB before raising, MCP connection check for unlisted server raises.
-3. `test_event_schema.py` must cover: all five valid event types parse correctly, missing `agent_id` raises `EventSchemaError`, confidence outside range raises `EventSchemaError`.
-4. `test_promotion.py` must cover: rejected hypothesis → `promote_durable` with `NEGATIVE_KNOWLEDGE` edge, operational state → `discard`, low confidence → `return_to_log`, matching existing node → `reinforce`.
-5. `test_graph_schema.py` must cover: decay calculation for each node type at 1 day, 30 days, 365 days. Verify `ProductStructure` decays slower than `CustomerSignal`.
-6. Achieve 80% line coverage on `shared/` as reported by pytest-cov.
+1. Write tests using pytest and pytest-asyncio. Mock all external calls.
+2. `test_event_schema.py` must cover: all four valid event types parse correctly; `AgentSignal` with `stage='observation'` and `stage='finding'` both parse; `event_type='AgentFinding'` raises `EventSchemaError` (removed type); missing `agent_id` raises `EventSchemaError`; confidence outside range raises.
+3. `test_promotion.py` must cover: rejected hypothesis → `promote_durable`; operational state → `discard`; low confidence → `return_to_log`; matching existing node → `reinforce`.
+4. `test_graph_schema.py`: decay calculation for each node type at 1 day, 30 days, 365 days.
+5. Achieve 80% line coverage on `shared/`.
 
 **Done when:**
 - `pytest tests/unit/` exits 0
@@ -912,69 +974,66 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 
 ---
 
-### - [ ] TASK-28: Write integration tests
+### - [ ] TASK-25: Write integration tests
 
 **Inputs:**
 - Docker installed
 - TASK-07 migration runner
-- TASK-14 through TASK-18 complete
+- TASK-15 through TASK-19 complete
 
 **Outputs:**
 - `tests/integration/conftest.py`
 - `tests/integration/test_event_log.py`
 - `tests/integration/test_knowledge_graph.py`
-- `tests/integration/test_coordination_loop.py`
+- `tests/integration/test_signal_flow.py`
 
 **Steps:**
 
-1. Create `tests/integration/conftest.py` with pytest fixtures:
-   - `arcadedb_client` (starts ArcadeDB via docker-compose, runs migrations, yields client, tears down)
-   - `postgres_url` (starts Postgres via docker-compose, yields connection string, tears down)
-   
-   Use pytest-asyncio for async tests.
-2. `test_event_log.py`: emit one of each event type, verify it can be polled back with cursor-based query, verify events outside retention window are not returned (use a mock retention date), verify duplicate signal within retention window is detected by novelty check.
-3. `test_knowledge_graph.py`: create a `ProductStructure` node, traverse from it, verify confidence decays after simulated time, verify `reinforce_node` resets decay clock, verify `flag_for_revalidation` sets `revalidation_required=True`.
-4. `test_coordination_loop.py`: run a minimal coordination loop — emit a synthetic high-confidence signal, verify orchestration creates an objective, verify verification subgraph runs and emits a verdict, verify objective subgraph runs and writes a checkpoint, verify promotion runs at objective closure and adds a node to the knowledge graph.
+1. Create `tests/integration/conftest.py` with pytest fixtures: `arcadedb_client` (starts ArcadeDB via docker-compose, runs migrations, yields client, tears down), `postgres_url`.
+2. `test_event_log.py`: emit one of each event type, verify cursor-based polling returns correct results, verify `AgentSignal` with `stage='observation'` is returned separately from `stage='finding'`.
+3. `test_knowledge_graph.py`: create a `ProductStructure` node, traverse from it, verify confidence decays, verify `reinforce_node` resets decay clock.
+4. `test_signal_flow.py`: emit a synthetic high-confidence `stage='observation'` signal; verify the verification agent's `poll_for_observations` picks it up; emit a synthetic `stage='finding'` signal; verify the research/plan agent's `poll_for_findings` picks it up; verify a `CommitmentRecord` is created; verify marking it `approved` causes the implementation agent's `poll_for_approved` to pick it up.
 
 **Done when:**
 - All integration tests pass against live ArcadeDB and Postgres Docker containers
-- `test_coordination_loop.py` passes end-to-end without errors
-- CI runs integration tests as a separate job with Docker services
+- `test_signal_flow.py` passes the full observation → finding → commitment → approved pipeline
 
 ---
 
-### - [ ] TASK-29: Write prompt regression tests
+### - [ ] TASK-26: Write prompt regression tests
 
 **Inputs:**
-- TASK-14, TASK-15, TASK-16 complete
+- TASK-15 exploratory agent complete
+- TASK-15 verification agent complete
+- TASK-16 research/plan agent complete
 - OpenRouter API key in environment
 
 **Outputs:**
 - `tests/agent/test_exploratory_regression.py`
 - `tests/agent/test_verification_regression.py`
-- `tests/agent/test_objective_regression.py`
+- `tests/agent/test_research_plan_regression.py`
 - `tests/agent/fixtures/`
 
 **Steps:**
 
-1. Create fixture files in `tests/agent/fixtures/` for each agent type: sample mandate for exploratory, sample finding for verification, sample objective with checkpoint for objective.
-2. `test_exploratory_regression.py`: run exploratory agent against fixture mandate, assert output is a list of `AgentSignal` objects with correct schema, assert confidence values are floats in [0,1], assert no objective registry writes occur. Use `GUARDRAILS_MODE=stub_pass`.
-3. `test_verification_regression.py`: run verification subgraph with a fixture finding and `originating_model_family=ModelFamily.DEEPSEEK`, assert `ModelFamilyError` is NOT raised (Qwen verifies DeepSeek finding), assert verdict is one of confirmed/contradicted/inconclusive, assert `verdict_confidence` is in [0,1].
-4. `test_objective_regression.py`: run objective subgraph with a fixture objective that has a prior checkpoint, assert the agent does not re-investigate hypotheses marked 'confirmed' or 'rejected' in the checkpoint, assert a new checkpoint is written during execution.
-5. These tests call real OpenRouter APIs. Use DeepSeek V4 Flash for all to keep cost low during CI. Mark with `@pytest.mark.agent_regression` to allow selective skipping.
+1. Create fixture files in `tests/agent/fixtures/` for each agent type.
+2. `test_exploratory_regression.py`: run exploratory agent against a fixture mandate in free-explorer mode, assert output signals have correct schema, `stage='observation'`, confidence in [0,1]. Use `GUARDRAILS_MODE=stub_pass`.
+3. `test_verification_regression.py`: inject a fixture `stage='observation'` signal, run verification agent, assert verdict is one of confirmed/contradicted/inconclusive, assert `stage='finding'` signal is emitted, assert `ModelFamilyError` is not raised for correct family pairing.
+4. `test_research_plan_regression.py`: inject a fixture `stage='finding'` signal, run research/plan agent, assert a `CommitmentRecord` is created with `status='pending_approval'`, assert `CognitiveCheckpoint` contains a non-empty `plan`.
+5. Mark all with `@pytest.mark.agent_regression`.
 
 **Done when:**
-- All three regression test files pass when run with a valid OpenRouter API key
-- Verification test confirms `ModelFamilyError` is not raised for correct family pairing
-- Objective test confirms checkpoint continuity — no re-investigation of concluded hypotheses
-- Tests are marked `@pytest.mark.agent_regression` and can be excluded with `-m 'not agent_regression'`
+- All three regression test files pass with a valid OpenRouter API key
+- Verification test confirms `stage='finding'` signal is emitted
+- Research/plan test confirms plan is produced and commitment is marked `pending_approval`
+- Tests are marked and can be excluded with `-m 'not agent_regression'`
 
 ---
 
-### - [ ] TASK-30: Write ACAP boundary and secret scanning tests
+### - [ ] TASK-27: Write ACAP boundary and secret scanning tests
 
 **Inputs:**
-- TASK-10, TASK-14 through TASK-18 complete
+- TASK-10, TASK-15 through TASK-19 complete
 
 **Outputs:**
 - `tests/agent/test_acap_boundaries.py`
@@ -982,20 +1041,19 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 
 **Steps:**
 
-1. `test_acap_boundaries.py`: for each agent type, attempt an action outside its ACAP (exploratory writes to objective registry, objective reads an unpermitted MCP connection, verification attempts to use same model family as originator). Assert `ACAPViolationError` is raised for each. Assert each violation generates an event in the ArcadeDB event log.
-2. `test_no_hardcoded_secrets.py`: scan all Python files in the repository for patterns matching API keys, tokens, and passwords. Patterns to check: strings matching `/sk-[a-zA-Z0-9]{40,}/`, `/[A-Z0-9]{32,}/`, any `.env` variable value used as a literal. Fail if any match is found outside of `.env.example` (which uses placeholder values only).
+1. `test_acap_boundaries.py`: for each agent type, attempt an action outside its ACAP. Assert `ACAPViolationError` is raised. Assert each violation generates an event log entry.
+2. `test_no_hardcoded_secrets.py`: scan all Python files for patterns matching API keys and tokens. Fail on any match outside `.env.example`.
 
 **Done when:**
 - All ACAP boundary violations raise `ACAPViolationError`
 - All violations generate ArcadeDB event log entries
 - Secret scanning test passes on a clean repository
-- Secret scanning test fails if a fake API key is added to a source file (verify this with a test of the test)
 
 ---
 
-## Phase J — CI/CD and Deployment
+## Phase K — CI/CD and Deployment
 
-### - [ ] TASK-31: Configure GitHub Actions CI pipeline
+### - [ ] TASK-28: Configure GitHub Actions CI pipeline
 
 **Inputs:**
 - All previous tasks complete
@@ -1008,70 +1066,58 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 **Steps:**
 
 1. Create `.github/workflows/ci.yml` triggered on `pull_request` to `main`. Jobs in order:
-   1. **lint**: runs `uv run ruff check .` — fails on any warning
-   2. **type-check**: runs `uv run mypy . --strict`
-   3. **schema-validation**: runs `python -m schema.migrate --dry-run` to validate schema files without executing, plus checks that no existing migration file in `schema/*/migrations/` has been modified (compare git diff against main)
-   4. **unit-tests**: runs `uv run pytest tests/unit/ --cov=shared --cov=agents --cov-fail-under=80`
-   5. **acap-validation**: runs a script that loads all four agent type ACAPs from the reference config and validates them
-   6. **event-schema-tests**: runs a script that verifies each agent type only emits events matching canonical schemas
-   7. **integration-tests**: uses `services:` arcadedb and postgres Docker containers, runs `uv run pytest tests/integration/`
-   8. **secret-scan**: runs `uv run pytest tests/unit/test_no_hardcoded_secrets.py`
-   
-   All jobs are required status checks — PR cannot merge until all pass.
-2. Create `.github/workflows/deploy.yml` triggered on `push` to `main`. Jobs:
-   1. **deploy-arcadedb**: if `infra/render/arcadedb.yaml` changed, triggers Render deploy hook
-   2. **deploy-orchestration**: if `agents/orchestration/` or `agents/verification/` or `agents/objective/` or `shared/` changed, triggers Render deploy hook for orchestration background worker
-   3. **deploy-exploratory**: if `agents/exploratory/` or `shared/` changed, triggers Render deploy hooks for each cron job service
-   4. **run-migrations**: after any deploy, runs `python -m schema.migrate` via Render one-off job API
-3. Add branch protection rule documentation to README: require all CI checks, require 1 reviewer, require linear history.
+   1. **lint**: `uv run ruff check .`
+   2. **type-check**: `uv run mypy . --strict`
+   3. **schema-validation**: validate schema files, check no existing migration modified
+   4. **unit-tests**: `uv run pytest tests/unit/ --cov=shared --cov=agents --cov-fail-under=80`
+   5. **acap-validation**: load all five agent type ACAPs from reference config
+   6. **integration-tests**: ArcadeDB and Postgres Docker services, `uv run pytest tests/integration/`
+   7. **secret-scan**: `uv run pytest tests/unit/test_no_hardcoded_secrets.py`
+2. Create `.github/workflows/deploy.yml` triggered on `push` to `main`. Per-agent deploy hooks triggered by changed directories. Run migrations after any deploy.
 
 **Done when:**
 - CI pipeline runs on a test PR and all jobs complete
-- A PR with a ruff lint error fails the lint job
-- A PR modifying an existing migration file fails the schema-validation job
-- A PR with coverage below 80% fails the unit-tests job
+- A PR with a ruff lint error fails lint
+- A PR modifying an existing migration fails schema-validation
+- Coverage below 80% fails unit-tests
 
 ---
 
-### - [ ] TASK-32: Configure Render deployment
+### - [ ] TASK-29: Configure Render deployment
 
 **Inputs:**
 - Render account with API access
-- ArcadeDB Docker image
 - All agent code complete
 
 **Outputs:**
-- `infra/render/arcadedb.yaml`
-- `infra/render/orchestration.yaml`
-- `infra/render/exploratory.yaml`
 - `infra/render/render.yaml`
+- `Makefile`
 
 **Steps:**
 
-1. Create `infra/render/render.yaml` as the Render Blueprint (Infrastructure as Code) defining all services:
-   1. **arcadedb**: `type=private_service`, `image=arcadedata/arcadedb:latest`, `disk={name=arcadedb-data, mountPath=/arcadedb-data, sizeGB=50}`, `envVars=[JAVA_OPTS with password config]`
-   2. **postgres**: `type=pserv` (managed Postgres), `plan=starter`, `databaseName=agent-operations`
-   3. **orchestration**: `type=worker`, `buildCommand='uv sync'`, `startCommand='python -m agents.orchestration'`, `plan=starter`, `envVars=[all required secrets as references]`
-   4. **implementation**: `type=worker`, `buildCommand='uv sync'`, `startCommand='python -m agents.implementation'`, `plan=starter`, `envVars=[all required secrets as references]`
-   5. **approval-ui**: `type=web`, `buildCommand='cd ui && npm install && npm run build'`, `startCommand='cd ui && npm start'`, `plan=starter`, `envVars=[ARCADEDB_URL, ARCADEDB_USER, ARCADEDB_PASSWORD]`
-   6. **exploratory-{mandate_name}**: `type=cron`, `schedule='0/30 * * * *'`, `buildCommand='uv sync'`, `startCommand='python -m agents.exploratory --mandate={mandate_name}'`, `plan=starter` for each configured mandate
-2. All services must be in the same region. Set via `RENDER_REGION` env var, default to `oregon`.
-3. Create a Makefile with targets:
-   - `make deploy-all` (triggers full Render Blueprint sync)
-   - `make migrate` (runs schema migrations via Render one-off job)
-   - `make logs-orchestration` (tails orchestration worker logs via Render CLI)
+1. Create `infra/render/render.yaml` as the Render Blueprint defining all services:
+   1. **arcadedb**: `type=private_service`, `image=arcadedata/arcadedb:latest`, persistent disk
+   2. **postgres**: `type=pserv` (managed Postgres), `plan=starter`
+   3. **orchestration**: `type=cron`, `schedule='*/5 * * * *'`, `startCommand='python -m agents.orchestration'`
+   4. **verification**: `type=worker`, `startCommand='python -m agents.verification'`
+   5. **research-plan**: `type=worker`, `startCommand='python -m agents.research_plan'`
+   6. **implementation**: `type=worker`, `startCommand='python -m agents.implementation'`
+   7. **approval-ui**: `type=web`, React build and serve
+   8. **exploratory-{mandate_name}**: `type=cron`, `schedule='0/30 * * * *'`, `startCommand='python -m agents.exploratory --mandate={mandate_name}'` for each configured mandate
+2. All services in the same region.
+3. Makefile targets: `make deploy-all`, `make migrate`, `make logs-{service}`.
 
 **Done when:**
 - `render.yaml` validates against Render Blueprint schema
-- All services are in the same region (verified by inspecting rendered config)
-- `make migrate` command correctly invokes schema migration
+- All services are in the same region
+- `make migrate` correctly invokes schema migration
 
 ---
 
-### - [ ] TASK-33: Write deployment and operations runbook
+### - [ ] TASK-30: Write deployment and operations runbook
 
 **Inputs:**
-- TASK-31, TASK-32 complete
+- TASK-28, TASK-29 complete
 
 **Outputs:**
 - `docs/runbook.md`
@@ -1079,63 +1125,70 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 **Steps:**
 
 1. Create `docs/runbook.md` covering:
-   1. **Initial deployment** — steps to deploy from scratch to a new Render account
-   2. **Required secrets** — table of all environment variables, what they are, where to obtain them
+   1. **Initial deployment** — steps to deploy from scratch
+   2. **Required secrets** — table of all environment variables
    3. **Running schema migrations** — when and how
-   4. **Monitoring** — where to find Langfuse traces, how to check Prometheus metrics, where to see Render service logs
-   5. **Adding a new exploratory mandate** — YAML structure, where to add it, how to deploy
-   6. **Human approval workflow** — how to access the approval UI, review pending objectives, approve/reject/defer implementation tasks, track approval history
-   7. **Implementation agent operations** — how implementation agents are spawned, what they do, how to monitor their progress, how to handle failures
-   8. **Escalation queue** — where human review items appear, how to action them
-   9. **Common failure modes** — ArcadeDB connection failures, OpenRouter rate limits, checkpoint write failures, implementation agent failures — with diagnosis steps and remediation
+   4. **Monitoring** — Langfuse traces, Prometheus metrics, Render service logs, active worker dashboard
+   5. **Adding a new exploratory mandate** — YAML structure, observation modes, deployment
+   6. **Managing focuses** — how to create, close, and view active focuses in ArcadeDB
+   7. **Human approval workflow** — accessing the UI, reviewing plans, approve/reject/defer
+   8. **Signal flow** — how observations become findings become commitments
+   9. **Common failure modes** — ArcadeDB connection failures, OpenRouter rate limits, stalled agents, verification family mismatch errors
 
 **Done when:**
 - Runbook exists at `docs/runbook.md`
-- Required secrets table is complete and matches `.env.example`
-- Human approval workflow section explains how to access UI, review objectives, and approve/reject/defer tasks
-- Implementation agent operations section explains spawning, monitoring, and failure handling
-- Escalation queue section explains where items appear and how a human acts on them
+- Signal flow section explains the full observation → finding → commitment → approved → complete path
+- Human approval section explains how to access UI and act on pending plans
 
 ---
 
-## Phase K — Reference Configuration
+## Phase L — Reference Configuration
 
-### - [ ] TASK-34: Create reference project configuration
+### - [ ] TASK-31: Create reference project configuration
 
 **Inputs:**
 - TASK-13 config loader
-- `config/schema/` schemas
 
 **Outputs:**
 - `config/reference/mtp.yaml`
 - `config/reference/acap_overrides.yaml`
 - `config/reference/mandates/competitor_monitor.yaml`
+- `config/reference/mandates/product_structure.yaml`
 
 **Steps:**
 
-1. Create `config/reference/mtp.yaml` as the minimal valid MTP for testing. Use a fictional organisation — do not reference Campaign Monitor or any real project. Example:
+1. Create `config/reference/mtp.yaml`. Use a fictional organisation. Example:
    - `purpose='Continuously improve the quality and reliability of the software systems we operate'`
    - `constraints=['Never expose customer data', 'Never deploy to production without a checkpoint', 'Escalate all changes exceeding $1000 resource cost']`
    - `intent_description='We exist to make software that works well and gets better over time.'`
-2. Create `config/reference/acap_overrides.yaml` with per-agent-type overrides that are minimally permissive for testing:
-   - **exploratory**: `permitted_tools=['web_search']`, `permitted_mcp_connections=[]`, `permitted_event_types=['AgentSignal','AgentAction']`
-   - **objective**: `permitted_tools=['web_search','code_read']`, `permitted_mcp_connections=['https://mcp.example.com/v1']`, `permitted_event_types=['AgentAction','AgentFinding','AgentCheckpoint']`
+
+2. Create `config/reference/acap_overrides.yaml` with per-agent-type overrides:
+   - **exploratory**: `permitted_tools=['web_search']`, `permitted_mcp_connections=[]`, `permitted_event_types=['AgentSignal','AgentAction']`, `observation_modes=['web_search']`
+   - **verification**: `permitted_tools=['web_search']`, `permitted_mcp_connections=[]`, `permitted_event_types=['AgentSignal','AgentAction']`
+   - **research_plan**: `permitted_tools=['web_search','code_read']`, `permitted_mcp_connections=['https://mcp.example.com/v1']`, `permitted_event_types=['AgentSignal','AgentAction','AgentCheckpoint']`
+   - **implementation**: `permitted_tools=['code_read','code_write','test_run']`, `permitted_mcp_connections=['https://mcp.example.com/v1']`, `permitted_event_types=['AgentSignal','AgentAction','AgentCheckpoint']`
+   - **orchestration**: `permitted_tools=[]`, `permitted_mcp_connections=[]`, `permitted_event_types=['AgentAction','CommitmentTransition']`
+
 3. Create `config/reference/mandates/competitor_monitor.yaml`:
-   - `name='competitor_monitor'`
-   - `domain='competitive_intelligence'`
-   - `polling_interval_minutes=30`
-   - `signal_threshold=0.6`
-   - `search_queries=['competitor product updates', 'industry announcements']`
-4. Verify: `load_project_config('config/reference')` succeeds with no validation errors.
+   - `name='competitor_monitor'`, `domain='competitive_intelligence'`
+   - `polling_interval_minutes=30`, `signal_threshold=0.6`
+   - `observation_modes=['web_search']`
+
+4. Create `config/reference/mandates/product_structure.yaml`:
+   - `name='product_structure'`, `domain='product_knowledge'`
+   - `polling_interval_minutes=60`, `signal_threshold=0.4`
+   - `observation_modes=['mcp']`
+
+5. Verify: `load_project_config('config/reference')` succeeds with no validation errors.
 
 **Done when:**
 - `load_project_config('config/reference')` succeeds
 - Reference config contains no real project names, organisation names, or credentials
-- All four agent type ACAPs can be loaded and validated against the reference config
+- All five agent type ACAPs can be loaded and validated
 
 ---
 
-### - [ ] TASK-35: Final validation and AGENTS.md self-test
+### - [ ] TASK-32: Final validation and AGENTS.md self-test
 
 **Inputs:**
 - All previous tasks complete
@@ -1146,33 +1199,51 @@ via `ChatOpenRouter` with `bind_tools()` and `ToolNode` for native tool calling.
 **Steps:**
 
 1. Run the full CI pipeline locally: `uv run ruff check . && uv run mypy . --strict && uv run pytest tests/unit/ --cov=shared --cov=agents --cov-fail-under=80 && uv run pytest tests/integration/ && uv run pytest tests/agent/ -m 'not agent_regression'`
-2. Run the secret scan: `uv run pytest tests/unit/test_no_hardcoded_secrets.py`
+2. Run secret scan: `uv run pytest tests/unit/test_no_hardcoded_secrets.py`
 3. Run `load_project_config('config/reference')` and assert it returns a valid `ProjectConfig`
-4. Verify `AGENTS.md` is accurate by reading it and checking each claim:
+4. Verify `AGENTS.md` is accurate:
    1. Every listed directory exists
-   2. The autonomous modification rules match what the ACAP enforcer actually enforces
-   3. The event schema contract matches what `emit_validated` actually requires
-   4. The listed permitted network calls match what's in the reference ACAP
-5. If any discrepancy is found in `AGENTS.md`, update `AGENTS.md` to match the actual implementation — never change the implementation to match `AGENTS.md` without human review.
-6. Create a final commit: `TASK-35: validated — all checks pass, AGENTS.md accurate`
+   2. Autonomous modification rules match ACAP enforcer behaviour
+   3. Event schema contract matches what `emit_validated` actually requires
+   4. Permitted network calls match reference ACAP
+5. If any discrepancy in `AGENTS.md`, update `AGENTS.md` — never change the implementation to match `AGENTS.md` without human review.
+6. Create final commit: `TASK-32: validated — all checks pass, AGENTS.md accurate`
 
 **Done when:**
 - Full local CI pipeline exits 0
 - Secret scan exits 0
 - Reference config loads successfully
-- `AGENTS.md` accurately describes the actual repository structure and enforcement rules
-- Final commit exists with message `TASK-35: validated — all checks pass, AGENTS.md accurate`
+- `AGENTS.md` accurately describes the actual repository
+- Final commit exists
 
 ---
 
-All 35 tasks complete. The Agent Operations repository is ready for first deployment.
+All 32 tasks complete. The Agent Operations repository is ready for first deployment.
 
 Proceed with:
-1. Creating the Render services from `infra/render/render.yaml`
+1. Creating Render services from `infra/render/render.yaml`
 2. Setting all required environment variables as Render secrets
 3. Running `make migrate` to initialise the ArcadeDB schema
-4. Running the orchestration background worker
-5. Running the human approval UI (`cd ui && npm install && npm start`)
-6. Verifying traces appear in Langfuse Cloud
+4. Deploying verification, research-plan, and implementation workers
+5. Deploying exploratory cron jobs for each configured mandate
+6. Running `make logs-verification` to confirm the verification worker is polling
+7. Accessing the approval UI and verifying the dashboard shows active workers
+
+**Architecture summary:**
+
+```
+Colony workers (exploratory cron jobs)
+    ↓ emit AgentSignal stage='observation'
+Verification worker (polls independently)
+    ↓ emit AgentSignal stage='finding'
+Research/Plan worker (polls independently)
+    ↓ creates CommitmentRecord status='pending_approval'
+Human approval UI
+    ↓ CommitmentRecord status='approved'
+Implementation worker (polls independently)
+    ↓ CommitmentRecord status='complete'
+Orchestration agent (5-min cron)
+    → knowledge graph promotion, decay, health monitoring, escalation
+```
 
 **References:** Agent Operations Requirements Document (project); The Event Log and Agent Types (project); AI-Native Organization Blueprint (project); ArcadeDB documentation; Render.com documentation; LangGraph documentation; OpenRouter documentation.

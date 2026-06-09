@@ -127,9 +127,9 @@ class OpenRouterClient:
             "Content-Type": "application/json",
         }
 
-        if enable_caching and role == AgentRole.OBJECTIVE:
+        if enable_caching and role == AgentRole.RESEARCH_PLAN:
             headers["HTTP-Referer"] = "agent-operations"
-            headers["X-Title"] = "Agent Operations — Objective Agent"
+            headers["X-Title"] = "Agent Operations — Research/Plan Agent"
 
         try:
             response = await self._client.post(

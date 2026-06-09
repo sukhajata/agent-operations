@@ -1,7 +1,7 @@
-"""ArcadeDB identity store and objective registry operations.
+"""ArcadeDB identity store, focus registry, and commitment registry operations.
 
 Provides functions to load MTP documents, ACAP definitions, and manage
-objective records including checkpoints.
+focus records and commitment records including checkpoints.
 """
 
 from __future__ import annotations
@@ -12,8 +12,9 @@ from typing import Any
 from schema.identity.models import (
     ACAPDefinition,
     CognitiveCheckpoint,
+    CommitmentRecord,
+    FocusRecord,
     MTPDocument,
-    ObjectiveRecord,
 )
 
 from .client import ArcadeDBClient
@@ -43,7 +44,8 @@ async def load_acap(
 
     Args:
         client: ArcadeDB client instance
-        agent_type: One of exploratory, verification, objective, orchestration
+        agent_type: One of exploratory, verification, research_plan,
+            implementation, orchestration
 
     Returns:
         The ACAPDefinition if found, None otherwise
@@ -57,104 +59,160 @@ async def load_acap(
     return ACAPDefinition.model_validate(records[0])
 
 
-async def get_objective(
-    client: ArcadeDBClient, objective_id: str
-) -> ObjectiveRecord | None:
-    """Retrieve an objective record by ID.
+async def get_focus(
+    client: ArcadeDBClient, focus_id: str
+) -> FocusRecord | None:
+    """Retrieve a focus record by ID.
 
     Args:
         client: ArcadeDB client instance
-        objective_id: The objective identifier
+        focus_id: The focus identifier
 
     Returns:
-        The ObjectiveRecord if found, None otherwise
+        The FocusRecord if found, None otherwise
     """
     records = await client.execute_query(
-        "SELECT FROM ObjectiveRecord WHERE objective_id = :objective_id LIMIT 1",
-        {"objective_id": objective_id},
+        "SELECT FROM FocusRecord WHERE focus_id = :focus_id LIMIT 1",
+        {"focus_id": focus_id},
     )
     if not records:
         return None
-    return ObjectiveRecord.model_validate(records[0])
+    return FocusRecord.model_validate(records[0])
 
 
-async def create_objective(
-    client: ArcadeDBClient, objective: ObjectiveRecord
+async def create_focus(
+    client: ArcadeDBClient, focus: FocusRecord
 ) -> str:
-    """Create a new objective record in the registry.
+    """Create a new focus record in the registry.
 
     Args:
         client: ArcadeDB client instance
-        objective: The objective record to create
+        focus: The focus record to create
 
     Returns:
-        The objective_id of the created record
+        The focus_id of the created record
     """
-    params = _objective_params(objective)
+    params = _focus_params(focus)
     columns = ", ".join(f"{k} = :{k}" for k in params)
     await client.execute_command(
-        f"INSERT INTO ObjectiveRecord SET {columns}", params
+        f"INSERT INTO FocusRecord SET {columns}", params
     )
-    return objective.objective_id
+    return focus.focus_id
 
 
-async def update_objective(
-    client: ArcadeDBClient,
-    objective_id: str,
-    updates: dict[str, Any],
-) -> None:
-    """Update fields on an objective record.
+async def get_commitment(
+    client: ArcadeDBClient, commitment_id: str
+) -> CommitmentRecord | None:
+    """Retrieve a commitment record by ID.
 
     Args:
         client: ArcadeDB client instance
-        objective_id: The objective to update
+        commitment_id: The commitment identifier
+
+    Returns:
+        The CommitmentRecord if found, None otherwise
+    """
+    records = await client.execute_query(
+        "SELECT FROM CommitmentRecord WHERE commitment_id = :commitment_id LIMIT 1",
+        {"commitment_id": commitment_id},
+    )
+    if not records:
+        return None
+    return CommitmentRecord.model_validate(records[0])
+
+
+async def create_commitment(
+    client: ArcadeDBClient, commitment: CommitmentRecord
+) -> str:
+    """Create a new commitment record in the registry.
+
+    Args:
+        client: ArcadeDB client instance
+        commitment: The commitment record to create
+
+    Returns:
+        The commitment_id of the created record
+    """
+    params = _commitment_params(commitment)
+    columns = ", ".join(f"{k} = :{k}" for k in params)
+    await client.execute_command(
+        f"INSERT INTO CommitmentRecord SET {columns}", params
+    )
+    return commitment.commitment_id
+
+
+async def update_commitment(
+    client: ArcadeDBClient,
+    commitment_id: str,
+    updates: dict[str, Any],
+) -> None:
+    """Update fields on a commitment record.
+
+    Args:
+        client: ArcadeDB client instance
+        commitment_id: The commitment to update
         updates: Dict of field names to new values
     """
     set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    updates["objective_id"] = objective_id
+    updates["commitment_id"] = commitment_id
     await client.execute_command(
-        f"UPDATE ObjectiveRecord SET {set_clause} WHERE objective_id = :objective_id",
+        f"UPDATE CommitmentRecord SET {set_clause} WHERE commitment_id = :commitment_id",
         updates,
     )
 
 
 async def write_checkpoint(
     client: ArcadeDBClient,
-    objective_id: str,
+    commitment_id: str,
     checkpoint: CognitiveCheckpoint,
 ) -> None:
-    """Write a cognitive checkpoint to an objective record.
+    """Write a cognitive checkpoint to a commitment record.
 
     Args:
         client: ArcadeDB client instance
-        objective_id: The objective to update
+        commitment_id: The commitment to update
         checkpoint: The cognitive checkpoint to write
     """
     params: dict[str, Any] = {
-        "objective_id": objective_id,
+        "commitment_id": commitment_id,
         "checkpoint": checkpoint.model_dump(mode="json"),
         "checkpoint_at": datetime.now(UTC).isoformat(),
     }
     await client.execute_command(
-        "UPDATE ObjectiveRecord SET checkpoint = :checkpoint, "
+        "UPDATE CommitmentRecord SET checkpoint = :checkpoint, "
         "checkpoint_at = :checkpoint_at "
-        "WHERE objective_id = :objective_id",
+        "WHERE commitment_id = :commitment_id",
         params,
     )
 
 
-def _objective_params(obj: ObjectiveRecord) -> dict[str, Any]:
-    """Convert an ObjectiveRecord to ArcadeDB parameter map."""
+def _focus_params(focus: FocusRecord) -> dict[str, Any]:
+    """Convert a FocusRecord to ArcadeDB parameter map."""
     params: dict[str, Any] = {
-        "objective_id": obj.objective_id,
-        "status": obj.status,
-        "created_at": obj.created_at.isoformat(),
-        "domain": obj.domain,
-        "priority_signal": obj.priority_signal,
-        "assigned_agent_id": obj.assigned_agent_id,
-        "implementation_status": obj.implementation_status,
-        "implementation_state": obj.implementation_state,
+        "focus_id": focus.focus_id,
+        "domain": focus.domain,
+        "description": focus.description,
+        "status": focus.status,
+        "created_at": focus.created_at.isoformat(),
+        "priority_signal": focus.priority_signal,
+        "assigned_agent_id": focus.assigned_agent_id,
     }
-    if obj.checkpoint is not None:
-        params["checkpoint"] = obj.checkpoint.model_dump(mode="json")
+    if focus.checkpoint is not None:
+        params["checkpoint"] = focus.checkpoint.model_dump(mode="json")
+    return params
+
+
+def _commitment_params(commitment: CommitmentRecord) -> dict[str, Any]:
+    """Convert a CommitmentRecord to ArcadeDB parameter map."""
+    params: dict[str, Any] = {
+        "commitment_id": commitment.commitment_id,
+        "status": commitment.status,
+        "created_at": commitment.created_at.isoformat(),
+        "domain": commitment.domain,
+        "priority_signal": commitment.priority_signal,
+        "assigned_agent_id": commitment.assigned_agent_id,
+        "implementation_state": commitment.implementation_state,
+    }
+    if commitment.checkpoint is not None:
+        params["checkpoint"] = commitment.checkpoint.model_dump(mode="json")
     return params

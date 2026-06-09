@@ -29,7 +29,7 @@ class ACAPEnforcer:
         self,
         tool_name: str,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
         mtp_version: str,
     ) -> None:
         """Raise ACAPViolationError if tool_name is not permitted."""
@@ -38,7 +38,7 @@ class ACAPEnforcer:
                 action=f"use tool '{tool_name}'",
                 reason="tool not in permitted_tools",
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -47,7 +47,7 @@ class ACAPEnforcer:
         self,
         server_url: str,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
         mtp_version: str,
     ) -> None:
         """Raise ACAPViolationError if server_url is not permitted."""
@@ -56,7 +56,7 @@ class ACAPEnforcer:
                 action=f"connect to MCP server '{server_url}'",
                 reason="server_url not in permitted_mcp_connections",
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -65,7 +65,7 @@ class ACAPEnforcer:
         self,
         event_type: str,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
         mtp_version: str,
     ) -> None:
         """Raise ACAPViolationError if event_type is not permitted."""
@@ -74,7 +74,7 @@ class ACAPEnforcer:
                 action=f"emit event '{event_type}'",
                 reason="event_type not in permitted_event_types",
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -85,7 +85,7 @@ class ACAPEnforcer:
         duration_seconds: float,
         mcp_reads: int,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
         mtp_version: str,
     ) -> None:
         """Raise ACAPViolationError if any resource ceiling is exceeded."""
@@ -99,7 +99,7 @@ class ACAPEnforcer:
                     f"max_tokens_per_run ({ceiling.max_tokens_per_run})"
                 ),
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -112,7 +112,7 @@ class ACAPEnforcer:
                     f"max_duration_seconds ({ceiling.max_duration_seconds}s)"
                 ),
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -125,7 +125,7 @@ class ACAPEnforcer:
                     f"max_mcp_reads_per_run ({ceiling.max_mcp_reads_per_run})"
                 ),
                 agent_id=agent_id,
-                objective_id=objective_id,
+                focus_id=focus_id,
             )
             self.log_violation(violation, mtp_version)
             raise violation
@@ -150,13 +150,14 @@ class ACAPEnforcer:
                 event_type="AgentSignal",
                 ts=datetime.now(UTC),
                 agent_id=violation.agent_id,
-                objective_id=violation.objective_id,
                 mtp_version=mtp_version,
-                payload={
-                    "violation_action": violation.action,
-                    "violation_reason": violation.reason,
-                },
+                claim=violation.action,
+                domain="acap",
                 confidence=1.0,
+                reasoning=violation.reason,
+                sources=[],
+                focus_id=violation.focus_id,
+                stage="observation",
                 novelty_flag=True,
             )
 

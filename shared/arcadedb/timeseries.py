@@ -13,15 +13,14 @@ from typing import Any
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
-    AgentFinding,
     AgentSignal,
-    ObjectiveTransition,
+    CommitmentTransition,
 )
 
 from .client import ArcadeDBClient
 
 Event = (
-    AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition
+    AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition
 )
 
 
@@ -41,8 +40,8 @@ async def emit_event(client: ArcadeDBClient, event: Event) -> None:
 
     Args:
         client: ArcadeDB client instance
-        event: The event to emit (AgentSignal, AgentAction, AgentFinding,
-            AgentCheckpoint, or ObjectiveTransition)
+        event: The event to emit (AgentSignal, AgentAction, AgentCheckpoint,
+            or CommitmentTransition)
 
     Raises:
         ArcadeDBError: If the insert command fails
@@ -74,8 +73,8 @@ async def poll_events(
         event_type: The TimeSeries type name to query
         since_ts: Return only events after this timestamp
         agent_id: Optional filter by agent ID
-        objective_id: Optional filter by objective ID (non-AgentSignal types)
-        focus_id: Optional filter by focus ID (AgentSignal only)
+        objective_id: Optional filter by objective ID (deprecated, use focus_id)
+        focus_id: Optional filter by focus ID
         limit: Maximum number of events to return
 
     Returns:

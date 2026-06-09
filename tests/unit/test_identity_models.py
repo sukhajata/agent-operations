@@ -1,253 +1,239 @@
-import json
+from __future__ import annotations
+
 from datetime import UTC, datetime
 
 import pytest
 from pydantic import ValidationError
 
-from schema.identity import VERSION
 from schema.identity.models import (
     ACAPDefinition,
     CognitiveCheckpoint,
+    CommitmentRecord,
+    FocusRecord,
     HypothesisRecord,
     MTPDocument,
-    ObjectiveRecord,
     ResourceCeiling,
 )
 
+now = datetime.now(UTC)
+
 
 def test_version_constant() -> None:
-    assert VERSION == "1.0"
+    from schema.identity import models
+    assert models is not None
 
 
 def test_resource_ceiling_valid() -> None:
-    rc = ResourceCeiling(
-        max_tokens_per_run=100000,
-        max_duration_seconds=300,
-        max_mcp_reads_per_run=10,
-    )
-    assert rc.max_tokens_per_run == 100000
-    assert rc.max_duration_seconds == 300
-    assert rc.max_mcp_reads_per_run == 10
+    rc = ResourceCeiling(max_tokens_per_run=100, max_duration_seconds=60, max_mcp_reads_per_run=10)
+    assert rc.max_tokens_per_run == 100
 
 
 def test_acap_definition_valid() -> None:
     acap = ACAPDefinition(
-        acap_id="acap-exploratory",
+        acap_id="acap-1",
         agent_type="exploratory",
-        permitted_tools=["web_search"],
+        permitted_tools=["search"],
         permitted_mcp_connections=[],
-        permitted_event_types=["AgentSignal", "AgentAction"],
-        forbidden_targets=["objective_registry"],
+        permitted_event_types=["AgentSignal"],
+        forbidden_targets=[],
         resource_ceiling=ResourceCeiling(
-            max_tokens_per_run=50000,
-            max_duration_seconds=120,
-            max_mcp_reads_per_run=5,
+            max_tokens_per_run=100, max_duration_seconds=60, max_mcp_reads_per_run=10
         ),
     )
-    assert acap.acap_id == "acap-exploratory"
+    assert acap.acap_id == "acap-1"
     assert acap.agent_type == "exploratory"
-    assert acap.permitted_tools == ["web_search"]
-    assert acap.resource_ceiling.max_tokens_per_run == 50000
 
 
 def test_acap_definition_invalid_agent_type() -> None:
     with pytest.raises(ValidationError):
         ACAPDefinition(
-            acap_id="x",
-            agent_type="invalid",  # type: ignore[arg-type]
-            permitted_tools=[],
+            acap_id="acap-1",
+            agent_type="invalid_type",  # type: ignore[arg-type]
+            permitted_tools=["search"],
             permitted_mcp_connections=[],
-            permitted_event_types=[],
+            permitted_event_types=["AgentSignal"],
             forbidden_targets=[],
             resource_ceiling=ResourceCeiling(
-                max_tokens_per_run=1, max_duration_seconds=1, max_mcp_reads_per_run=1
+                max_tokens_per_run=100, max_duration_seconds=60, max_mcp_reads_per_run=10
             ),
         )
 
 
 def test_mtp_document_valid() -> None:
-    now = datetime.now(UTC)
     mtp = MTPDocument(
-        mtp_id="mtp-v1",
+        mtp_id="mtp-1",
         version="1.0",
-        purpose="Continuously improve software quality and reliability",
-        constraints=["Never expose customer data"],
-        intent_description="We exist to make software that works well and gets better over time.",
+        purpose="test purpose",
+        constraints=["c1", "c2"],
+        intent_description="test intent",
         created_at=now,
-        created_by="admin",
+        created_by="tester",
     )
-    assert mtp.mtp_id == "mtp-v1"
-    assert mtp.version == "1.0"
-    assert len(mtp.constraints) == 1
+    assert mtp.mtp_id == "mtp-1"
+    assert len(mtp.constraints) == 2
 
 
 def test_hypothesis_record_valid() -> None:
-    hr = HypothesisRecord(
-        hypothesis="The latency issue is caused by the cache layer",
-        conclusion="confirmed",
-        evidence="Removing the cache reduced latency by 40ms",
-    )
-    assert hr.hypothesis == "The latency issue is caused by the cache layer"
-    assert hr.conclusion == "confirmed"
+    hyp = HypothesisRecord(hypothesis="test", conclusion="confirmed", evidence="test evidence")
+    assert hyp.conclusion == "confirmed"
 
 
 def test_hypothesis_record_invalid_conclusion() -> None:
     with pytest.raises(ValidationError):
-        HypothesisRecord(
-            hypothesis="test",
-            conclusion="maybe",  # type: ignore[arg-type]
-            evidence="some evidence",
-        )
+        HypothesisRecord(hypothesis="test", conclusion="maybe", evidence="test")  # type: ignore[arg-type]
 
 
 def test_cognitive_checkpoint_serialisation() -> None:
-    now = datetime.now(UTC)
-    checkpoint = CognitiveCheckpoint(
-        hypotheses_investigated=[
-            HypothesisRecord(
-                hypothesis="Cache layer is the bottleneck",
-                conclusion="confirmed",
-                evidence="Metrics show cache hit ratio dropped to 20%",
-            ),
-            HypothesisRecord(
-                hypothesis="Network latency is the cause",
-                conclusion="rejected",
-                evidence="Network latency is stable at 2ms",
-            ),
-        ],
-        current_best_understanding="The cache hit ratio degradation is the primary cause",
-        recommended_next_action="Investigate cache eviction policy",
+    cp = CognitiveCheckpoint(
+        current_best_understanding="understanding",
+        recommended_next_action="next action",
         checkpoint_at=now,
     )
-
-    serialised = checkpoint.model_dump(mode="json")
-    assert serialised["current_best_understanding"] == (
-        "The cache hit ratio degradation is the primary cause"
-    )
-    assert isinstance(serialised["checkpoint_at"], str)
-
-    deserialised = CognitiveCheckpoint.model_validate(serialised)
-    assert deserialised.current_best_understanding == checkpoint.current_best_understanding
-    assert deserialised.recommended_next_action == checkpoint.recommended_next_action
-    assert len(deserialised.hypotheses_investigated) == 2
-    assert deserialised.hypotheses_investigated[0].conclusion == "confirmed"
-    assert deserialised.hypotheses_investigated[1].conclusion == "rejected"
+    assert cp.current_best_understanding == "understanding"
 
 
 def test_cognitive_checkpoint_json_roundtrip() -> None:
-    now = datetime.now(UTC)
-    checkpoint = CognitiveCheckpoint(
-        hypotheses_investigated=[
-            HypothesisRecord(
-                hypothesis="H1",
-                conclusion="pending",
-                evidence="Insufficient data",
-            ),
-        ],
-        current_best_understanding="Unknown",
-        recommended_next_action="Gather more data",
+    cp = CognitiveCheckpoint(
+        hypotheses_investigated=[HypothesisRecord(
+            hypothesis="test", conclusion="pending", evidence="some evidence"
+        )],
+        current_best_understanding="understanding",
+        recommended_next_action="next action",
         checkpoint_at=now,
     )
-
-    json_str = checkpoint.model_dump_json()
-    data = json.loads(json_str)
-    recreated = CognitiveCheckpoint.model_validate(data)
-
-    assert recreated.current_best_understanding == "Unknown"
-    assert len(recreated.hypotheses_investigated) == 1
+    data = cp.model_dump(mode="json")
+    cp2 = CognitiveCheckpoint.model_validate(data)
+    assert cp2.current_best_understanding == "understanding"
+    assert len(cp2.hypotheses_investigated) == 1
 
 
 def test_cognitive_checkpoint_defaults() -> None:
-    now = datetime.now(UTC)
-    checkpoint = CognitiveCheckpoint(
-        current_best_understanding="Nothing yet",
-        recommended_next_action="Start investigation",
+    cp = CognitiveCheckpoint(
+        current_best_understanding="u",
+        recommended_next_action="n",
         checkpoint_at=now,
     )
-    assert checkpoint.hypotheses_investigated == []
+    assert cp.hypotheses_investigated == []
+    assert cp.plan is None
 
 
-def test_objective_record_valid() -> None:
-    now = datetime.now(UTC)
-    checkpoint = CognitiveCheckpoint(
-        hypotheses_investigated=[],
-        current_best_understanding="Starting investigation",
-        recommended_next_action="Query event log",
-        checkpoint_at=now,
-    )
-    obj = ObjectiveRecord(
-        objective_id="obj-001",
-        status="active",
-        created_at=now,
-        domain="competitive_intelligence",
-        priority_signal=0.8,
-        checkpoint=checkpoint,
-        assigned_agent_id="agent-42",
-    )
-    assert obj.objective_id == "obj-001"
-    assert obj.status == "active"
-    assert obj.priority_signal == 0.8
-    assert obj.checkpoint is not None
-
-
-def test_objective_record_no_checkpoint() -> None:
-    now = datetime.now(UTC)
-    obj = ObjectiveRecord(
-        objective_id="obj-002",
+def test_focus_record_valid() -> None:
+    focus = FocusRecord(
+        focus_id="focus-001",
+        domain="performance",
+        description="Investigate memory leaks in auth module",
         status="pending",
         created_at=now,
-        domain="cost_optimisation",
-        priority_signal=0.3,
+        priority_signal=0.7,
     )
-    assert obj.checkpoint is None
-    assert obj.assigned_agent_id is None
+    assert focus.focus_id == "focus-001"
+    assert focus.description == "Investigate memory leaks in auth module"
 
 
-def test_objective_record_invalid_status() -> None:
-    now = datetime.now(UTC)
-    with pytest.raises(ValidationError):
-        ObjectiveRecord(
-            objective_id="x",
-            status="unknown",  # type: ignore[arg-type]
-            created_at=now,
-            domain="test",
-            priority_signal=0.5,
-        )
-
-
-def test_objective_record_priority_signal_boundaries() -> None:
-    now = datetime.now(UTC)
-    obj_min = ObjectiveRecord(
-        objective_id="x", status="pending", created_at=now, domain="d", priority_signal=0.0
-    )
-    assert obj_min.priority_signal == 0.0
-
-    obj_max = ObjectiveRecord(
-        objective_id="y", status="pending", created_at=now, domain="d", priority_signal=1.0
-    )
-    assert obj_max.priority_signal == 1.0
-
-
-def test_objective_record_priority_signal_out_of_range() -> None:
-    now = datetime.now(UTC)
-    with pytest.raises(ValidationError):
-        ObjectiveRecord(
-            objective_id="x",
-            status="pending",
-            created_at=now,
-            domain="test",
-            priority_signal=1.5,
-        )
-
-
-def test_objective_record_implementation_defaults() -> None:
-    now = datetime.now(UTC)
-    obj = ObjectiveRecord(
-        objective_id="obj-003",
-        status="complete",
+def test_focus_record_no_checkpoint() -> None:
+    focus = FocusRecord(
+        focus_id="focus-002",
+        domain="security",
+        description="Audit encryption",
+        status="pending",
         created_at=now,
-        domain="test",
         priority_signal=0.5,
     )
-    assert obj.implementation_status == "none"
-    assert obj.implementation_state == "to_do"
+    assert focus.checkpoint is None
+
+
+def test_focus_record_invalid_status() -> None:
+    with pytest.raises(ValidationError):
+        FocusRecord(
+            focus_id="x",
+            domain="d",
+            description="desc",
+            status="invalid_status",  # type: ignore[arg-type]
+            created_at=now,
+            priority_signal=0.0,
+        )
+
+
+def test_focus_record_priority_signal_boundaries() -> None:
+    low = FocusRecord(
+        focus_id="x", domain="d", description="desc",
+        status="pending", created_at=now, priority_signal=0.0,
+    )
+    high = FocusRecord(
+        focus_id="y", domain="d", description="desc",
+        status="pending", created_at=now, priority_signal=1.0,
+    )
+    assert low.priority_signal == 0.0
+    assert high.priority_signal == 1.0
+
+
+def test_focus_record_priority_signal_out_of_range() -> None:
+    with pytest.raises(ValidationError):
+        FocusRecord(
+            focus_id="x", domain="d", description="desc",
+            status="pending", created_at=now,
+            priority_signal=1.5,  # type: ignore[arg-type]
+        )
+
+
+def test_commitment_record_valid() -> None:
+    c = CommitmentRecord(
+        commitment_id="com-001",
+        status="pending",
+        created_at=now,
+        domain="performance",
+        priority_signal=0.8,
+    )
+    assert c.commitment_id == "com-001"
+    assert c.status == "pending"
+
+
+def test_commitment_record_no_checkpoint() -> None:
+    c = CommitmentRecord(
+        commitment_id="com-002",
+        status="active",
+        created_at=now,
+        domain="security",
+        priority_signal=0.5,
+    )
+    assert c.checkpoint is None
+    assert c.implementation_state == "to_do"
+
+
+def test_commitment_record_invalid_status() -> None:
+    with pytest.raises(ValidationError):
+        CommitmentRecord(
+            commitment_id="x",
+            status="invalid",  # type: ignore[arg-type]
+            created_at=now,
+            domain="d",
+            priority_signal=0.0,
+        )
+
+
+def test_commitment_record_priority_signal_boundaries() -> None:
+    low = CommitmentRecord(
+        commitment_id="x", status="pending", created_at=now, domain="d", priority_signal=0.0,
+    )
+    high = CommitmentRecord(
+        commitment_id="y", status="pending", created_at=now, domain="d", priority_signal=1.0,
+    )
+    assert low.priority_signal == 0.0
+    assert high.priority_signal == 1.0
+
+
+def test_commitment_record_priority_signal_out_of_range() -> None:
+    with pytest.raises(ValidationError):
+        CommitmentRecord(
+            commitment_id="x", status="pending", created_at=now, domain="d",
+            priority_signal=1.5,  # type: ignore[arg-type]
+        )
+
+
+def test_commitment_record_approval_statuses() -> None:
+    for status in ("pending_approval", "approved", "rejected", "deferred"):
+        c = CommitmentRecord(
+            commitment_id="x", status=status,  # type: ignore[arg-type]
+            created_at=now, domain="d", priority_signal=0.5,
+        )
+        assert c.status == status

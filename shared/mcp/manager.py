@@ -47,7 +47,7 @@ class MCPConnectionManager:
         server_url: str,
         resource_path: str,
         agent_id: str,
-        objective_id: str,
+        focus_id: str,
         mtp_version: str,
         params: dict[str, Any] | None = None,
     ) -> str:
@@ -61,7 +61,7 @@ class MCPConnectionManager:
             server_url: The MCP server URL
             resource_path: The resource path/URI to read
             agent_id: Agent performing the read
-            objective_id: Active objective
+            focus_id: Active focus
             mtp_version: Current MTP version
             params: Optional additional parameters
 
@@ -73,7 +73,7 @@ class MCPConnectionManager:
             httpx.RequestError: On connection failure
         """
         self._enforcer.check_mcp_connection(
-            server_url, agent_id, objective_id, mtp_version
+            server_url, agent_id, focus_id, mtp_version
         )
 
         body: dict[str, Any] = {
@@ -98,7 +98,7 @@ class MCPConnectionManager:
                 "event_type": "AgentAction",
                 "ts": datetime.now(UTC),
                 "agent_id": agent_id,
-                "objective_id": objective_id,
+                "commitment_id": None,
                 "mtp_version": mtp_version,
                 "payload": {
                     "tool": "mcp_read",
