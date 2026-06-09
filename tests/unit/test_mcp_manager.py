@@ -49,6 +49,7 @@ def _make_client() -> ArcadeDBClient:
     client._client.post = AsyncMock(  # type: ignore[method-assign]
         return_value=response
     )
+    return client
 
 
 def test_read_permitted_server() -> None:

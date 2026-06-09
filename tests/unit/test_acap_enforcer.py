@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import asyncio
+from typing import Literal
 from unittest.mock import AsyncMock
 
 import pytest
@@ -10,12 +10,11 @@ from shared.acap.enforcer import ACAPEnforcer
 from shared.acap.exceptions import ACAPViolationError
 from shared.arcadedb.client import ArcadeDBClient
 
-
-from typing import Literal
+_AgentType = Literal["exploratory", "verification", "objective", "orchestration"]
 
 
 def _make_acap(
-    agent_type: Literal["exploratory", "verification", "objective", "orchestration"] = "exploratory",
+    agent_type: _AgentType = "exploratory",
 ) -> ACAPDefinition:
     return ACAPDefinition(
         acap_id=f"acap-{agent_type}",
