@@ -111,15 +111,18 @@ def test_check_resource_ceiling_mcp_reads_exceeded() -> None:
 
 def test_log_violation_emits_event() -> None:
     client = _make_client()
-    enforcer = ACAPEnforcer(_make_acap(), client)
 
+    response = AsyncMock()
+    response.is_success = True
+    response.json = lambda: {"result": []}
+    client._client.post = AsyncMock(return_value=response)  # type: ignore[method-assign]
+
+    enforcer = ACAPEnforcer(_make_acap(), client)
     violation = ACAPViolationError("test", "reason", "a1", "o1")
+
     enforcer.log_violation(violation, "1.0")
 
-    async def _run() -> None:
-        pass
-
-    asyncio.run(_run())
+    assert client._client.post.called
 
 
 # --- ACAPViolationError ---
