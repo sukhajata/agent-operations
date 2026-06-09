@@ -1,6 +1,11 @@
 """OpenRouter client package — LLM completion with agent-role routing."""
 
-from .client import OpenRouterAPIError, OpenRouterClient, OpenRouterConnectionError, OpenRouterError
+from .client import (
+    OpenRouterAPIError,
+    OpenRouterClient,
+    OpenRouterConnectionError,
+    OpenRouterError,
+)
 from .models import (
     MODEL_ASSIGNMENTS,
     PROVIDER_ROUTING,
