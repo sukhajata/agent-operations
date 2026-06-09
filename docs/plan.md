@@ -480,25 +480,74 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 - `agents/exploratory/graph.py`
 - `agents/exploratory/nodes.py`
 - `agents/exploratory/state.py`
+- `agents/exploratory/tools.py`
+
+**Design: Tool-based observation with knowledge graph dedup**
+
+The `observe` node is a ReAct loop. The LLM is given tools to query the knowledge
+graph and recent signal log at its own discretion during investigation. This
+prevents re-discovering facts already recorded in durable graph nodes.
+
+**Tools available to the LLM during observation:**
+- `search_graph(domain: str, query: str) -> list[dict]` — queries the knowledge
+  graph via `traverse_from` and keyword-matching on existing `ProductStructure`,
+  `InvestigationFinding`, and `CompetitorCapability` nodes in the mandate domain.
+  Returns node summaries (id, type, confidence, last_reinforced).
+- `search_signals(domain: str, query: str) -> list[dict]` — queries the event
+  log for `AgentSignal` events matching the domain in the last 7 days, with an
+  optional free-text query for relevance filtering.
+- `emit_signal(signal: AgentSignal) -> None` — validates via `emit_validated` and
+  writes to the event log. The LLM decides when to call this, not a fixed pipeline
+  stage.
+
+**System prompt for `observe`:**
+> "You already know the following about this domain. Before reporting a finding,
+> check whether it is already known by calling `search_graph` or `search_signals`.
+> If a finding matches an existing durable node, call `reinforce_node` instead of
+> emitting a duplicate signal. Only call `emit_signal` for genuinely novel,
+> high-confidence observations above the signal threshold."
 
 **Steps:**
 
-1. Create `agents/exploratory/state.py` with `ExploratoryState` TypedDict: `mandate` (`MandateDefinition`), `mtp_version` (str), `agent_id` (str), `last_cursor` (datetime | None), `observations` (list[str]), `signals_emitted` (int), `run_at` (datetime).
-2. Create `agents/exploratory/nodes.py` with async node functions:
+1. Create `agents/exploratory/state.py` with `ExploratoryState` TypedDict:
+   `mandate` (`MandateDefinition`), `mtp_version` (str), `agent_id` (str),
+   `last_cursor` (datetime | None), `messages` (list[dict] — conversation for ReAct loop),
+   `signals_emitted` (int), `run_at` (datetime).
+
+2. Create `agents/exploratory/tools.py` defining async tool functions:
+   - `search_graph(client, domain, query) -> list[dict]` wraps `shared/arcadedb/graph`
+     queries scoped to the domain.
+   - `search_signals(client, domain, query, since_ts) -> list[dict]` wraps
+     `shared/arcadedb/timeseries.poll_events` for `AgentSignal` type.
+   - `emit_signal(client, agent_id, mtp_version, observation, confidence, novelty) -> None`
+     constructs an `AgentSignal` and calls `emit_validated`.
+
+3. Create `agents/exploratory/nodes.py` with async node functions:
    - `load_context(state)` loads MTP version and ACAP from identity store
-   - `observe(state)` queries the mandate's domain using OpenRouter (`EXPLORATORY` role) with the mandate's `search_queries` as context — returns raw observations
-   - `filter_signals(state)` applies quality threshold (`confidence >= mandate.signal_threshold`) and novelty check (query ArcadeDB for existing signals with same domain in last 7 days)
-   - `emit_signals(state)` calls `emit_validated` for each signal that passed filtering
+   - `observe(state)` runs a ReAct loop using OpenRouter (`EXPLORATORY` role).
+     The LLM receives the mandate's `search_queries` in the system prompt along
+     with tool definitions. It iterates: investigate → optionally query graph/signals
+     → emit or skip → report summary. Loop ends when the LLM returns a final
+     message or after a max iteration count.
    - `update_cursor(state)` sets `last_cursor` to `now()`
-3. Create `agents/exploratory/graph.py` composing the nodes into a LangGraph `StateGraph`: `load_context` → `observe` → `filter_signals` → `emit_signals` → `update_cursor` → `END`. Compile with `PostgresSaver` checkpointer.
-4. The `observe` node must NEVER write to the objective registry — ACAP enforcer must prevent this. Add a test that attempts a write and verifies `ACAPViolationError` is raised.
-5. Entry point: `run_exploratory_agent(config_path: str, mandate_name: str) -> None` that loads config, builds the graph, and invokes it.
+
+4. Create `agents/exploratory/graph.py` composing the nodes into a LangGraph
+   `StateGraph`: `load_context` → `observe` → `update_cursor` → `END`.
+   Compile with `PostgresSaver` checkpointer.
+
+5. The `observe` node must NEVER write to the objective registry — ACAP enforcer
+   must prevent this. Add a test that attempts a write and verifies
+   `ACAPViolationError` is raised.
+
+6. Entry point: `run_exploratory_agent(config_path: str, mandate_name: str) -> None`
+   that loads config, builds the graph, and invokes it.
 
 **Done when:**
 - Graph compiles without error
 - `observe` node uses `EXPLORATORY` model role
-- `filter_signals` suppresses signals below threshold
-- Novelty check queries ArcadeDB for duplicate signals within retention window
+- `search_graph` queries ArcadeDB graph for existing nodes before LLM emits
+- `search_signals` queries event log for recent duplicates within retention window
+- LLM calls `emit_signal` only for genuinely novel observations
 - Objective registry write attempt raises `ACAPViolationError`
 - All emitted signals carry `agent_id`, `objective_id='none'`, `mtp_version`, `ts`
 - mypy strict passes
