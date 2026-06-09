@@ -221,7 +221,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-06: Define identity store and objective registry schema
+### - [x] TASK-06: Define identity store and objective registry schema
 
 **Inputs:**
 - MTP document structure, ACAP definition structure from requirements
@@ -249,7 +249,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-07: Write schema migration runner
+### - [x] TASK-07: Write schema migration runner
 
 **Inputs:**
 - TASK-04, TASK-05, TASK-06 complete
