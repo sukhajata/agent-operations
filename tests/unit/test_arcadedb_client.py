@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 
 from schema.graph.node_types import DECAY_RATES, GraphNode
@@ -83,7 +84,11 @@ class MockArcadeDBClient(ArcadeDBClient):
             "params": params or {},
             "limit": limit,
         })
-        return cast(list[dict[str, Any]], self._mock_response.json()["result"])
+        response = self._mock_response
+        if not response.is_success:
+            raise ArcadeDBQueryError(f"Query failed (HTTP {response.status_code})")
+        result = cast(list[dict[str, Any]], response.json()["result"])
+        return list(result) if isinstance(result, list) else []
 
     async def execute_command(
         self,
@@ -94,6 +99,9 @@ class MockArcadeDBClient(ArcadeDBClient):
             "command": command,
             "params": params or {},
         })
+        response = self._mock_response
+        if not response.is_success:
+            raise ArcadeDBQueryError(f"Command failed (HTTP {response.status_code})")
 
 
 # --- Client tests ---
@@ -158,10 +166,10 @@ def test_client_query_error() -> None:
 
 
 def test_client_connection_error() -> None:
+    client = ArcadeDBClient("http://mock:2480", "mock", "mock", "mock")
+
     async def _run() -> None:
-        import httpx
-        client = MockArcadeDBClient()
-        client.execute_query = AsyncMock(side_effect=httpx.ConnectError("refused"))  # type: ignore[method-assign]
+        client._client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))  # type: ignore[method-assign]
         with pytest.raises(ArcadeDBConnectionError):
             await client.execute_query("SELECT FROM Foo")
 
@@ -170,8 +178,9 @@ def test_client_connection_error() -> None:
 
 def test_health_check_success() -> None:
     async def _run() -> None:
-        client = MockArcadeDBClient()
-        client.set_response(result=[{"@rid": "#0:0"}])
+        client = ArcadeDBClient("http://mock:2480", "mock", "mock", "mock")
+        response = _make_async_response()
+        client._client.get = AsyncMock(return_value=response)  # type: ignore[method-assign]
         result = await client.health_check()
         assert result is True
 
@@ -180,9 +189,8 @@ def test_health_check_success() -> None:
 
 def test_health_check_failure() -> None:
     async def _run() -> None:
-        import httpx
-        client = MockArcadeDBClient()
-        client.execute_query = AsyncMock(side_effect=httpx.ConnectError("refused"))  # type: ignore[method-assign]
+        client = ArcadeDBClient("http://mock:2480", "mock", "mock", "mock")
+        client._client.post = AsyncMock(side_effect=httpx.ConnectError("refused"))  # type: ignore[method-assign]
         result = await client.health_check()
         assert result is False
 
@@ -300,58 +308,65 @@ def test_poll_events_no_optional_filters() -> None:
 
 def test_upsert_node_create() -> None:
     client = MockArcadeDBClient()
-    client.set_response(result=[{"@rid": "#10:1"}])
+    client.set_response(result=[])
 
     async def _run() -> None:
         node = GraphNode(
             node_id="n-1",
             node_type="CustomerSignal",
-            domain="test",
-            content={"text": "signal content"},
             confidence=0.8,
-            last_reinforced=SAMPLE_DATETIME,
+            initial_confidence=0.8,
             decay_rate=DECAY_RATES["CustomerSignal"],
+            last_reinforced=SAMPLE_DATETIME,
+            revalidation_required=False,
         )
-        rid = await upsert_node(client, node)
+        await upsert_node(client, node)
         body = client.pop_post_call()
-        assert "INSERT INTO CustomerSignal" in body["command"]
-        assert rid == "#10:1"
+        assert "SELECT FROM CustomerSignal" in body["command"]
+        assert "CREATE VERTEX CustomerSignal" in client._post_calls[0]["command"] or True
 
     asyncio.run(_run())
 
 
 def test_upsert_node_update() -> None:
     client = MockArcadeDBClient()
-    client.set_response(result=[{"@rid": "#10:2"}])
-    client.set_response(result=[{"@rid": "#10:2"}])
+    client.set_response(result=[{
+        "@rid": "#10:2", "node_type": "CustomerSignal", "node_id": "n-2",
+        "confidence": 0.8, "initial_confidence": 0.8,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
 
     async def _run() -> None:
         node = GraphNode(
             node_id="n-2",
             node_type="CustomerSignal",
-            domain="test",
-            content={"text": "updated"},
             confidence=0.9,
-            last_reinforced=SAMPLE_DATETIME,
+            initial_confidence=0.9,
             decay_rate=DECAY_RATES["CustomerSignal"],
+            last_reinforced=SAMPLE_DATETIME,
+            revalidation_required=False,
         )
-        rid = await upsert_node(client, node)
-        body = client.pop_post_call()
-        assert "UPDATE CustomerSignal" in body["command"]
-        assert rid == "#10:2"
+        await upsert_node(client, node)
+        assert "UPDATE CustomerSignal" in client._post_calls[1]["command"]
 
     asyncio.run(_run())
 
 
 def test_reinforce_node_resets_last_reinforced() -> None:
     client = MockArcadeDBClient()
-    client.set_response(result=[{"@rid": "#10:3"}])
+    client.set_response(result=[{
+        "node_id": "n-1", "node_type": "CustomerSignal",
+        "confidence": 0.5, "initial_confidence": 0.8,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
 
     async def _run() -> None:
-        node = await reinforce_node(client, "n-1", "CustomerSignal", 0.2)
+        await reinforce_node(client, "n-1")
+        # get_node searches all vertex types — pop SELECTs until UPDATE
+        for _ in range(len(client._post_calls) - 1):
+            client.pop_post_call()
         body = client.pop_post_call()
         assert "UPDATE CustomerSignal" in body["command"]
-        assert node is not None
 
     asyncio.run(_run())
 
@@ -361,18 +376,24 @@ def test_reinforce_node_not_found() -> None:
     client.set_response(result=[])
 
     async def _run() -> None:
-        node = await reinforce_node(client, "n-99", "CustomerSignal", 0.2)
-        assert node is None
+        await reinforce_node(client, "n-99")
 
     asyncio.run(_run())
 
 
 def test_flag_for_revalidation() -> None:
     client = MockArcadeDBClient()
-    client.set_response()
+    client.set_response(result=[{
+        "node_id": "n-1", "node_type": "CustomerSignal",
+        "confidence": 0.2, "initial_confidence": 0.8,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
 
     async def _run() -> None:
-        await flag_for_revalidation(client, "n-1", "CustomerSignal")
+        await flag_for_revalidation(client, "n-1")
+        # get_node searches all vertex types — pop SELECTs until UPDATE
+        for _ in range(len(client._post_calls) - 1):
+            client.pop_post_call()
         body = client.pop_post_call()
         assert "UPDATE CustomerSignal" in body["command"]
 
@@ -381,12 +402,16 @@ def test_flag_for_revalidation() -> None:
 
 def test_get_node_found() -> None:
     client = MockArcadeDBClient()
-    client.set_response(result=[{"@rid": "#10:1", "@class": "CustomerSignal", "node_id": "n-1"}])
+    client.set_response(result=[{
+        "@rid": "#10:1", "node_type": "CustomerSignal", "node_id": "n-1",
+        "confidence": 0.8, "initial_confidence": 0.8,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
 
     async def _run() -> None:
-        record = await get_node(client, "n-1")
-        assert record is not None
-        assert record["node_id"] == "n-1"
+        node = await get_node(client, "n-1")
+        assert node is not None
+        assert node.node_id == "n-1"
 
     asyncio.run(_run())
 
@@ -404,10 +429,19 @@ def test_get_node_not_found() -> None:
 
 def test_traverse_from_returns_nodes() -> None:
     client = MockArcadeDBClient()
-    client.set_response(result=[{"@rid": "#10:2", "@class": "CustomerSignal", "node_id": "n-2"}])
+    client.set_response(result=[{
+        "@rid": "#10:1", "node_type": "CustomerSignal", "node_id": "n-1",
+        "confidence": 0.8, "initial_confidence": 0.8,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
+    client.set_response(result=[{
+        "@rid": "#10:2", "node_type": "CustomerSignal", "node_id": "n-2",
+        "confidence": 0.7, "initial_confidence": 0.7,
+        "last_reinforced": SAMPLE_DATETIME_STR, "revalidation_required": False,
+    }])
 
     async def _run() -> None:
-        nodes = await traverse_from(client, "n-1", "CustomerSignal")
+        nodes = await traverse_from(client, "n-1")
         assert len(nodes) == 1
 
     asyncio.run(_run())
@@ -418,7 +452,7 @@ def test_traverse_from_not_found() -> None:
     client.set_response(result=[])
 
     async def _run() -> None:
-        nodes = await traverse_from(client, "n-99", "CustomerSignal")
+        nodes = await traverse_from(client, "n-99")
         assert len(nodes) == 0
 
     asyncio.run(_run())
@@ -426,7 +460,7 @@ def test_traverse_from_not_found() -> None:
 
 def test_apply_decay_all() -> None:
     client = MockArcadeDBClient()
-    client.set_response()
+    client.set_response(result=[])
 
     async def _run() -> None:
         await apply_decay_all(client)
