@@ -72,7 +72,10 @@ def test_read_unpermitted_server_raises_before_network() -> None:
     mgr = MCPConnectionManager(_make_acap(), _make_client())
 
     async def _run() -> None:
-        with pytest.raises(ACAPViolationError, match="not in permitted_mcp_connections"):
+        with pytest.raises(
+            ACAPViolationError,
+            match="not in permitted_mcp_connections",
+        ):
             await mgr.read(
                 server_url="https://evil.com",
                 resource_path="docs/secret.md",
