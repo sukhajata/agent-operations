@@ -1,0 +1,21 @@
+# JSON Schema for MTP (Massive Transformative Purpose) configuration
+type: object
+required: [mtp_id, version, purpose, intent_description, created_at, created_by]
+properties:
+  mtp_id:
+    type: string
+  version:
+    type: string
+  purpose:
+    type: string
+  constraints:
+    type: array
+    items:
+      type: string
+  intent_description:
+    type: string
+  created_at:
+    type: string
+    format: date-time
+  created_by:
+    type: string

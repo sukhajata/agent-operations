@@ -1,0 +1,35 @@
+# JSON Schema for ACAP overrides configuration
+type: object
+required: [acap_id, agent_type, resource_ceiling]
+properties:
+  acap_id:
+    type: string
+  agent_type:
+    type: string
+    enum: [exploratory, verification, objective, orchestration]
+  permitted_tools:
+    type: array
+    items:
+      type: string
+  permitted_mcp_connections:
+    type: array
+    items:
+      type: string
+  permitted_event_types:
+    type: array
+    items:
+      type: string
+  forbidden_targets:
+    type: array
+    items:
+      type: string
+  resource_ceiling:
+    type: object
+    required: [max_tokens_per_run, max_duration_seconds, max_mcp_reads_per_run]
+    properties:
+      max_tokens_per_run:
+        type: integer
+      max_duration_seconds:
+        type: integer
+      max_mcp_reads_per_run:
+        type: integer

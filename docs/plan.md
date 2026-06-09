@@ -280,7 +280,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase C — Shared Libraries
 
-### - [ ] TASK-08: Build ArcadeDB client
+### - [x] TASK-08: Build ArcadeDB client
 
 **Inputs:**
 - ArcadeDB HTTP API documentation
@@ -307,7 +307,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-09: Build OpenRouter client with agent-role routing
+### - [x] TASK-09: Build OpenRouter client with agent-role routing
 
 **Inputs:**
 - OpenRouter API documentation
@@ -343,7 +343,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-10: Build ACAP enforcer
+### - [x] TASK-10: Build ACAP enforcer
 
 **Inputs:**
 - TASK-06 `ACAPDefinition` model
@@ -374,7 +374,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-11: Build event schema validator
+### - [x] TASK-11: Build event schema validator
 
 **Inputs:**
 - TASK-04 event type dataclasses
@@ -398,7 +398,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-12: Build MCP connection manager
+### - [x] TASK-12: Build MCP connection manager
 
 **Inputs:**
 - TASK-10 `ACAPEnforcer`
@@ -426,7 +426,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### - [ ] TASK-13: Build configuration loader
+### - [x] TASK-13: Build configuration loader
 
 **Inputs:**
 - TASK-06 schema models
