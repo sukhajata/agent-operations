@@ -9,7 +9,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-from schema.graph.node_types import DECAY_RATES, REVALIDATION_THRESHOLD, GraphNode
+from schema.graph.node_types import (
+    DECAY_RATES,
+    REVALIDATION_THRESHOLD,
+    GraphNode,
+)
 
 from .client import ArcadeDBClient
 
