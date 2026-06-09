@@ -82,8 +82,10 @@ class OpenRouterClient:
             enforce_independence(role, originating_model_family)
 
         model_name, model_family = MODEL_ASSIGNMENTS[role]
-        provider_config = provider if provider is not None else PROVIDER_ROUTING[model_family]
-
+        model_name, model_family = MODEL_ASSIGNMENTS[role]
+        provider_config = (
+            provider if provider is not None else PROVIDER_ROUTING[model_family]
+        )
         full_messages: list[dict[str, Any]] = [
             {"role": "system", "content": system},
             *messages,
