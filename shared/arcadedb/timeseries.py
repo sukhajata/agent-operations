@@ -20,7 +20,9 @@ from schema.timeseries.event_log import (
 
 from .client import ArcadeDBClient
 
-Event = AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition
+Event = (
+    AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition
+)
 
 
 def _serialize_params(event: Event) -> dict[str, Any]:
