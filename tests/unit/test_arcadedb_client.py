@@ -67,7 +67,9 @@ class MockArcadeDBClient(ArcadeDBClient):
         self.get_mock.return_value = _make_async_response(status_code, result)
 
     def pop_post_call(self) -> dict[str, Any]:
-        kwargs: dict[str, Any] = cast(dict[str, Any], self.post_mock.call_args.kwargs)
+        kwargs: dict[str, Any] = cast(
+            dict[str, Any], self.post_mock.call_args.kwargs
+        )
         return kwargs["json"]  # type: ignore[no-any-return]
 
 
