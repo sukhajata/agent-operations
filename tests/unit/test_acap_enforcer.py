@@ -11,10 +11,15 @@ from shared.acap.exceptions import ACAPViolationError
 from shared.arcadedb.client import ArcadeDBClient
 
 
-def _make_acap(agent_type: str = "exploratory") -> ACAPDefinition:
+from typing import Literal
+
+
+def _make_acap(
+    agent_type: Literal["exploratory", "verification", "objective", "orchestration"] = "exploratory",
+) -> ACAPDefinition:
     return ACAPDefinition(
         acap_id=f"acap-{agent_type}",
-        agent_type=agent_type,  # type: ignore[arg-type]
+        agent_type=agent_type,
         permitted_tools=["web_search", "code_read"],
         permitted_mcp_connections=["https://mcp.example.com/v1"],
         permitted_event_types=["AgentSignal", "AgentAction"],
