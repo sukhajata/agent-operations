@@ -39,7 +39,7 @@ class GraphNode:
     last_reinforced: datetime
     revalidation_required: bool
 
-def __post_init__(self) -> None:
+    def __post_init__(self: "GraphNode") -> None:
         if self.node_type not in DECAY_RATES:
             raise ValueError(
                 f"node_type must be one of {list(DECAY_RATES.keys())}, got '{self.node_type}'"
@@ -50,7 +50,8 @@ def __post_init__(self) -> None:
             raise ValueError(f"decay_rate must be in [0.0, 1.0), got {self.decay_rate}")
         if abs(self.decay_rate - expected_decay_rate) > 1e-12:
             raise ValueError(
-                f"decay_rate must be {expected_decay_rate} for node_type '{self.node_type}', got {self.decay_rate}"
+                f"decay_rate must be {expected_decay_rate} for node_type "
+                f"'{self.node_type}', got {self.decay_rate}"
             )
 
         if not 0.0 <= self.confidence <= 1.0:
