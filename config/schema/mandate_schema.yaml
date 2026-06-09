@@ -1,0 +1,18 @@
+# JSON Schema for exploratory agent mandate definitions
+type: object
+required: [name, domain, polling_interval_minutes, signal_threshold, search_queries]
+properties:
+  name:
+    type: string
+  domain:
+    type: string
+  polling_interval_minutes:
+    type: integer
+  signal_threshold:
+    type: number
+    minimum: 0.0
+    maximum: 1.0
+  search_queries:
+    type: array
+    items:
+      type: string
