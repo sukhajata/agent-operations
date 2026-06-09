@@ -46,7 +46,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase A — Repository Scaffold
 
-### TASK-01: Initialise repository structure and tooling
+### - [x] TASK-01: Initialise repository structure and tooling
 
 **Inputs:**
 - This document
@@ -105,7 +105,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-02: Define environment variable contract
+### - [x] TASK-02: Define environment variable contract
 
 **Inputs:**
 - List of all secrets the platform requires
@@ -127,7 +127,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-03: Write AGENTS.md
+### - [x] TASK-03: Write AGENTS.md
 
 **Inputs:**
 - Repository structure from TASK-01
@@ -156,7 +156,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase B — ArcadeDB Schema
 
-### TASK-04: Define event log TimeSeries schema
+### - [x] TASK-04: Define event log TimeSeries schema
 
 **Inputs:**
 - ArcadeDB documentation for TimeSeries types
@@ -186,7 +186,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-05: Define knowledge graph schema
+### - [x] TASK-05: Define knowledge graph schema
 
 **Inputs:**
 - Knowledge graph node type specifications from conversation: `ProductStructure`, `DecisionRecord`, `InvestigationFinding`, `CompetitorCapability`, `CustomerTheme`, `CustomerSignal`
@@ -221,7 +221,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-06: Define identity store and objective registry schema
+### - [ ] TASK-06: Define identity store and objective registry schema
 
 **Inputs:**
 - MTP document structure, ACAP definition structure from requirements
@@ -249,7 +249,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-07: Write schema migration runner
+### - [ ] TASK-07: Write schema migration runner
 
 **Inputs:**
 - TASK-04, TASK-05, TASK-06 complete
@@ -280,7 +280,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase C — Shared Libraries
 
-### TASK-08: Build ArcadeDB client
+### - [ ] TASK-08: Build ArcadeDB client
 
 **Inputs:**
 - ArcadeDB HTTP API documentation
@@ -307,7 +307,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-09: Build OpenRouter client with agent-role routing
+### - [ ] TASK-09: Build OpenRouter client with agent-role routing
 
 **Inputs:**
 - OpenRouter API documentation
@@ -343,7 +343,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-10: Build ACAP enforcer
+### - [ ] TASK-10: Build ACAP enforcer
 
 **Inputs:**
 - TASK-06 `ACAPDefinition` model
@@ -374,7 +374,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-11: Build event schema validator
+### - [ ] TASK-11: Build event schema validator
 
 **Inputs:**
 - TASK-04 event type dataclasses
@@ -398,7 +398,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-12: Build MCP connection manager
+### - [ ] TASK-12: Build MCP connection manager
 
 **Inputs:**
 - TASK-10 `ACAPEnforcer`
@@ -426,7 +426,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-13: Build configuration loader
+### - [ ] TASK-13: Build configuration loader
 
 **Inputs:**
 - TASK-06 schema models
@@ -466,7 +466,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase D — Agent Implementations
 
-### TASK-14: Build exploratory agent
+### - [ ] TASK-14: Build exploratory agent
 
 **Inputs:**
 - TASK-08 ArcadeDB client
@@ -505,7 +505,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-15: Build verification agent as LangGraph subgraph
+### - [ ] TASK-15: Build verification agent as LangGraph subgraph
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11
@@ -536,7 +536,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-16: Build objective agent as LangGraph subgraph
+### - [ ] TASK-16: Build objective agent as LangGraph subgraph
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11, TASK-12
@@ -573,7 +573,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase E — Orchestration and Subagents
 
-### TASK-17: Build knowledge promotion logic
+### - [ ] TASK-17: Build knowledge promotion logic
 
 **Inputs:**
 - TASK-05 graph schema
@@ -603,7 +603,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-18: Build orchestration agent
+### - [ ] TASK-18: Build orchestration agent
 
 **Inputs:**
 - TASK-14, TASK-15, TASK-16, TASK-17 complete
@@ -639,7 +639,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-19: Build implementation agent
+### - [ ] TASK-19: Build implementation agent
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
@@ -678,7 +678,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase E — Orchestration and Subagents
 
-### TASK-20: Update orchestration agent for human approval workflow
+### - [ ] TASK-20: Update orchestration agent for human approval workflow
 
 **Inputs:**
 - TASK-18 orchestration agent complete
@@ -707,7 +707,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase F — Human Approval UI
 
-### TASK-23: Build human approval UI with CopilotKit
+### - [ ] TASK-23: Build human approval UI with CopilotKit
 
 **Inputs:**
 - TASK-20 orchestration agent with approval workflow complete
@@ -743,7 +743,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase G — Guardrails
 
-### TASK-24: Build guardrail ensemble
+### - [ ] TASK-24: Build guardrail ensemble
 
 **Inputs:**
 - WildGuard, Granite Guardian, ShieldGemma model access (via hosted API or HuggingFace)
@@ -782,7 +782,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase H — Observability
 
-### TASK-25: Configure Langfuse OpenTelemetry export
+### - [ ] TASK-25: Configure Langfuse OpenTelemetry export
 
 **Inputs:**
 - Langfuse Cloud account and API keys in environment
@@ -806,7 +806,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-26: Configure Prometheus custom metrics
+### - [ ] TASK-26: Configure Prometheus custom metrics
 
 **Inputs:**
 - `prometheus-client` library
@@ -835,7 +835,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase I — Tests
 
-### TASK-27: Write unit tests for shared libraries
+### - [ ] TASK-27: Write unit tests for shared libraries
 
 **Inputs:**
 - TASK-08 through TASK-13 complete
@@ -866,7 +866,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-28: Write integration tests
+### - [ ] TASK-28: Write integration tests
 
 **Inputs:**
 - Docker installed
@@ -897,7 +897,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-29: Write prompt regression tests
+### - [ ] TASK-29: Write prompt regression tests
 
 **Inputs:**
 - TASK-14, TASK-15, TASK-16 complete
@@ -925,7 +925,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-30: Write ACAP boundary and secret scanning tests
+### - [ ] TASK-30: Write ACAP boundary and secret scanning tests
 
 **Inputs:**
 - TASK-10, TASK-14 through TASK-18 complete
@@ -949,7 +949,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase J — CI/CD and Deployment
 
-### TASK-31: Configure GitHub Actions CI pipeline
+### - [ ] TASK-31: Configure GitHub Actions CI pipeline
 
 **Inputs:**
 - All previous tasks complete
@@ -987,7 +987,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-32: Configure Render deployment
+### - [ ] TASK-32: Configure Render deployment
 
 **Inputs:**
 - Render account with API access
@@ -1022,7 +1022,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-33: Write deployment and operations runbook
+### - [ ] TASK-33: Write deployment and operations runbook
 
 **Inputs:**
 - TASK-31, TASK-32 complete
@@ -1054,7 +1054,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ## Phase K — Reference Configuration
 
-### TASK-34: Create reference project configuration
+### - [ ] TASK-34: Create reference project configuration
 
 **Inputs:**
 - TASK-13 config loader
@@ -1089,7 +1089,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 
 ---
 
-### TASK-35: Final validation and AGENTS.md self-test
+### - [ ] TASK-35: Final validation and AGENTS.md self-test
 
 **Inputs:**
 - All previous tasks complete
