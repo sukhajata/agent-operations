@@ -99,15 +99,10 @@ async def _get_applied_migrations(
     database: str,
 ) -> dict[str, AppliedMigration]:
     """Query all previously applied migrations, keyed by migration_id."""
-    try:
-        rows = await client.execute_query(
-            database,
-            f"SELECT FROM {SCHEMA_MIGRATION_DOCUMENT_TYPE}",
-        )
-    except Exception:
-        logger.debug("SchemaMigration document type not yet created — no applied migrations")
-        return {}
-
+    rows = await client.execute_query(
+        database,
+        f"SELECT FROM {SCHEMA_MIGRATION_DOCUMENT_TYPE}",
+    )
     result: dict[str, AppliedMigration] = {}
     for row in rows:
         m = AppliedMigration(
