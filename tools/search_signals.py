@@ -30,11 +30,27 @@ def create_search_signals_tool(client: ArcadeDBClient) -> Any:  # noqa: ANN401
             query: Natural language description of what you're looking for
         """
         since = datetime.now(UTC) - timedelta(days=7)
+        since = datetime.now(UTC) - timedelta(days=7)
         events = await poll_events(
             client,
             event_type="AgentSignal",
             since_ts=since,
             limit=100,
+        )
+
+        # Best-effort filtering: AgentSignal stores `domain`, `claim`, and `reasoning`.
+        filtered = [e for e in events if e.get("domain") == domain]
+        q = query.strip().lower()
+        if q:
+            filtered = [
+                e
+                for e in filtered
+                if q in f"{e.get('claim', '')} {e.get('reasoning', '')}".lower()
+            ]
+
+        if not filtered:
+            return "No recent signals found for this domain/query."
+        return str(filtered)
         )
         if not events:
             return "No recent signals found in this domain."
