@@ -40,7 +40,8 @@ async def run_agent(
         AgentRole,
         ModelFamily,
     )
-    from tools import create_exploratory_tools
+    from tools.search_graph import create_search_graph_tool
+    from tools.search_signals import create_search_signals_tool
 
     config = load_project_config(config_path)
 
