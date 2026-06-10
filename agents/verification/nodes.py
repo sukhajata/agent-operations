@@ -171,30 +171,27 @@ async def investigate(
 
 async def emit_finding(
     state: VerificationState,
-    db_client: ArcadeDBClient,
+    emit_fn: Any,  # noqa: ANN401
 ) -> dict[str, Any]:
-    """Emit an AgentFinding with the verification verdict."""
-    from shared.event_schemas.validator import emit_validated
+    """Emit an AgentFinding with the verification verdict.
 
+    emit_fn is an injectable async function that wraps emit_validated.
+    Passed by the graph builder; mockable in tests.
+    """
     signal = state["signal"]
     if signal is None:
         return {"completed": True}
 
-    finding: dict[str, Any] = {
-        "event_type": "AgentFinding",
-        "ts": datetime.now(UTC),
-        "agent_id": state["agent_id"],
-        "mtp_version": state["mtp_version"],
-        "claim": signal.claim,
-        "domain": signal.domain,
-        "confidence": state["verdict_confidence"] or 0.5,
-        "reasoning": state["verdict_rationale"] or "",
-        "sources": signal.sources,
-        "focus_id": state["focus_id"],
-        "verdict": state["verdict"] or "inconclusive",
-        "originating_signal_ts": signal.ts,
-    }
-    await emit_validated(finding, db_client)
+    await emit_fn(
+        claim=signal.claim,
+        domain=signal.domain,
+        confidence=state["verdict_confidence"] or 0.5,
+        reasoning=state["verdict_rationale"] or "",
+        sources=signal.sources,
+        focus_id=state["focus_id"],
+        verdict=state["verdict"] or "inconclusive",
+        originating_signal_ts=signal.ts.isoformat(),
+    )
     logger.info(
         "Verification complete: %s — %s (confidence: %.2f)",
         signal.claim[:80], state["verdict"], state["verdict_confidence"] or 0.0,

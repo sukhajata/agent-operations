@@ -27,6 +27,7 @@ def build_verification_graph(
     model: ChatOpenRouter,
     db_client: ArcadeDBClient,
     tools: list[Any],
+    emit_fn: Any,  # noqa: ANN401
     signal_threshold: float,
     checkpointer: BaseCheckpointSaver[Any] | None = None,
 ) -> Any:  # noqa: ANN401
@@ -48,7 +49,7 @@ def build_verification_graph(
     )
     graph.add_node(
         "emit_finding",
-        _with_deps(emit_finding, db_client=db_client),
+        _with_deps(emit_finding, emit_fn=emit_fn),
     )
 
     graph.set_entry_point("poll_for_observations")

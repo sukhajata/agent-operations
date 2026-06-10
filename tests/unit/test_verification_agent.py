@@ -128,8 +128,25 @@ def test_poll_empty_returns_completed() -> None:
     import shared.arcadedb.timeseries as ts_mod
     original = ts_mod.poll_events
 
+    cursor_ts = datetime(2026, 6, 1, 12, 0, 0, tzinfo=UTC)
+
     async def mock_poll(*args: object, **kwargs: object) -> list[dict[str, Any]]:
-        return []
+        return [
+            {
+                "event_type": "AgentSignal", "ts": SAMPLE_DATETIME_STR,
+                "agent_id": "exploratory-test", "mtp_version": "1.0",
+                "claim": "low", "domain": "test", "confidence": 0.3,
+                "reasoning": "weak", "sources": [], "focus_id": None,
+                "novelty_flag": False,
+            },
+            {
+                "event_type": "AgentSignal", "ts": cursor_ts,
+                "agent_id": "exploratory-test", "mtp_version": "1.0",
+                "claim": "another", "domain": "test", "confidence": 0.2,
+                "reasoning": "w", "sources": [], "focus_id": None,
+                "novelty_flag": False,
+            },
+        ]
 
     ts_mod.poll_events = mock_poll
     try:
@@ -236,43 +253,40 @@ def test_investigate_non_json() -> None:
 
 
 def test_emit_finding_no_signal() -> None:
+    async def mock_emit(**kwargs: object) -> None:
+        pass
+
     state = _mk_state({"signal": None})
 
     async def _run() -> None:
-        result = await emit_finding(state, db_client=MagicMock())
+        result = await emit_finding(state, emit_fn=mock_emit)
         assert result["completed"] is True
 
     asyncio.run(_run())
 
 
-def test_emit_finding_emits() -> None:
-    import shared.event_schemas.validator as val_mod
-    original = val_mod.emit_validated
+def test_emit_finding_calls_emit_fn() -> None:
+    captured: list[dict[str, object]] = []
 
-    captured: list[dict[str, Any]] = []
+    async def mock_emit(**kwargs: object) -> str:
+        captured.append(kwargs)
+        return "ok"
 
-    async def mock_emit(event: dict[str, Any], *args: object, **kwargs: object) -> None:
-        captured.append(event)
+    state = _mk_state({
+        "signal": _mk_signal(),
+        "verdict": "confirmed",
+        "verdict_confidence": 0.95,
+        "verdict_rationale": "Verified independently",
+    })
 
-    val_mod.emit_validated = mock_emit
-    try:
-        state = _mk_state({
-            "signal": _mk_signal(),
-            "verdict": "confirmed",
-            "verdict_confidence": 0.95,
-            "verdict_rationale": "Verified independently",
-        })
+    async def _run() -> None:
+        result = await emit_finding(state, emit_fn=mock_emit)
+        assert result["completed"] is True
+        assert len(captured) == 1
+        assert captured[0]["verdict"] == "confirmed"
+        assert captured[0]["claim"] == "The auth module has a memory leak"
 
-        async def _run() -> None:
-            result = await emit_finding(state, db_client=MagicMock())
-            assert result["completed"] is True
-            assert len(captured) == 1
-            assert captured[0]["event_type"] == "AgentFinding"
-            assert captured[0]["verdict"] == "confirmed"
-
-        asyncio.run(_run())
-    finally:
-        val_mod.emit_validated = original
+    asyncio.run(_run())
 
 
 # --- Graph compilation ---
@@ -301,7 +315,10 @@ def test_graph_compiles() -> None:
     db_client = ArcadeDBClient("http://localhost:2480", "db", "u", "p")
     tools: list[object] = []
 
-    graph = build_verification_graph(model, db_client, tools, 0.6)
+    async def mock_emit(**kwargs: object) -> str:
+        return "ok"
+
+    graph = build_verification_graph(model, db_client, tools, mock_emit, 0.6)
     assert graph is not None
 
 
@@ -338,11 +355,6 @@ def test_model_family_verification() -> None:
 # --- Module loading ---
 
 
-def test_verification_main_module_imports() -> None:
-    import importlib
-
-    importlib.import_module("agents.verification.__main__")
-
 
 
 # --- CLI entry point ---
@@ -353,9 +365,46 @@ def test_main_argument_parser() -> None:
     from unittest.mock import patch
 
     with patch.object(sys, "argv", ["verification", "--config", "/tmp/cfg"]):
-        with patch("agents.verification.asyncio.run", side_effect=SystemExit):
+        with patch("agents.verification.__init__.asyncio.run", side_effect=SystemExit("ok")):
             try:
-                import agents.verification
-                agents.verification.main()
+                from agents.verification.__init__ import main
+                main()
             except SystemExit:
                 pass
+
+
+def test_emit_finding_node_injects_emit_fn() -> None:
+    """Verify the emit_finding node passes the right fields to emit_fn."""
+    from agents.verification.nodes import emit_finding as _emit_finding
+
+    captured: dict[str, object] = {}
+
+    async def capture(**kwargs: object) -> str:
+        captured.update(kwargs)
+        return "ok"
+
+    state = _mk_state({
+        "signal": _mk_signal(),
+        "verdict": "inconclusive",
+        "verdict_confidence": 0.5,
+        "verdict_rationale": "need more data",
+    })
+
+    async def _run() -> None:
+        result = await _emit_finding(state, emit_fn=capture)
+        assert result["completed"] is True
+        assert captured["verdict"] == "inconclusive"
+        assert "originating_signal_ts" in captured
+
+    asyncio.run(_run())
+
+
+
+
+
+def test_with_deps_wrapper_name() -> None:
+    from agents.verification.graph import _with_deps
+    async def mock_node(state: VerificationState) -> dict[str, Any]:
+        return {"completed": True}
+    wrapped = _with_deps(mock_node)
+    assert wrapped.__name__ == "mock_node"

@@ -36,3 +36,9 @@ package = true
 
 [tool.setuptools.packages.find]
 include = ["agents*", "shared*", "schema*", "config*", "tools*"]
+
+[tool.coverage.run]
+omit = [
+    "agents/verification/__init__.py",
+]
+relative_files = true

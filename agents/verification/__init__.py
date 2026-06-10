@@ -71,7 +71,18 @@ async def run_agent(
         create_search_graph_tool(db_client),
         create_search_signals_tool(db_client),
     ]
-    graph = build_verification_graph(model, db_client, tools, signal_threshold)
+
+    async def _emit_finding(**kwargs: object) -> str:
+        from shared.event_schemas.validator import emit_validated
+        finding = dict(kwargs)
+        finding["event_type"] = "AgentFinding"
+        finding["ts"] = datetime.now(UTC).isoformat()
+        finding["agent_id"] = agent_id
+        finding["mtp_version"] = mtp_version
+        await emit_validated(finding, db_client)
+        return "ok"
+
+    graph = build_verification_graph(model, db_client, tools, _emit_finding, signal_threshold)
 
     logger.info(
         "Verification agent %s starting (threshold=%.2f, interval=%ds)",
