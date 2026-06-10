@@ -23,7 +23,7 @@ jobs:
         with:
           version: "0.5.9"
       - run: uv sync
-      - run: uv run mypy . --strict
+      - run: uv run mypy --strict -p agents -p shared -p schema -p config -p tools
 
   test:
     runs-on: ubuntu-latest

@@ -115,3 +115,12 @@ signal_threshold: 0.6
 def test_config_validation_error_message() -> None:
     err = ConfigValidationError("test error")
     assert "test error" in str(err)
+
+
+def test_mandate_definition_focus_id_default() -> None:
+    from shared.config.loader import MandateDefinition
+    m = MandateDefinition(
+        name="test", domain="d", agent_type="free",
+        polling_interval_minutes=30, signal_threshold=0.5,
+    )
+    assert m.focus_id is None
