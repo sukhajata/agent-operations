@@ -71,6 +71,11 @@ async def poll_for_observations(
                 "signal": signal,
                 "focus_id": signal.focus_id,
                 "originating_model_family": _model_family_from_agent(signal.agent_id),
+                "last_cursor": signal.ts,
+                "completed": False,
+                "verdict": None,
+                "verdict_confidence": None,
+                "verdict_rationale": None,
             }
 
     latest_ts: datetime = cursor
