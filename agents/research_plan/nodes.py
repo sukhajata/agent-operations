@@ -221,10 +221,9 @@ async def read_event_delta(
         return {}
 
     since = finding.originating_signal_ts
-    events = await poll_events(
-        db_client,
-        event_type="AgentSignal",
-        since_ts=since,
+    events = await db_client.execute_query(
+        "SELECT FROM AgentSignal WHERE ts > :since_ts AND domain = :domain ORDER BY ts ASC",
+        {"since_ts": since.isoformat(), "domain": finding.domain},
         limit=30,
     )
     return {"event_delta": list(events)}
