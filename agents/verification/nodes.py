@@ -87,7 +87,15 @@ async def poll_for_observations(
             parsed = datetime.fromisoformat(ts_val)
             if parsed > latest_ts:
                 latest_ts = parsed
-    return {"last_cursor": latest_ts, "completed": True}
+    return {
+        "last_cursor": latest_ts,
+        "completed": True,
+        "signal": None,
+        "focus_id": None,
+        "verdict": None,
+        "verdict_confidence": None,
+        "verdict_rationale": None,
+    }
 
 
 async def investigate(
