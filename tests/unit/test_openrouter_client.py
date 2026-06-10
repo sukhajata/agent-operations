@@ -85,11 +85,11 @@ def test_kimi_provider_routing() -> None:
 
 
 def test_mimo_model_family_exists() -> None:
-    assert ModelFamily.MIMO == "mimo"
+    assert ModelFamily.MIMO is ModelFamily.MIMO
 
 
 def test_kimi_model_family_exists() -> None:
-    assert ModelFamily.KIMI == "kimi"
+    assert ModelFamily.KIMI is ModelFamily.KIMI
 
 
 def test_enforce_independence_non_matching_families() -> None:

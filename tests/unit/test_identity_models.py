@@ -172,7 +172,7 @@ def test_focus_record_priority_signal_out_of_range() -> None:
         FocusRecord(
             focus_id="x", domain="d", description="desc",
             status="pending", created_at=now,
-            priority_signal=1.5,  # type: ignore[arg-type]
+            priority_signal=1.5,
         )
 
 
@@ -226,14 +226,14 @@ def test_commitment_record_priority_signal_out_of_range() -> None:
     with pytest.raises(ValidationError):
         CommitmentRecord(
             commitment_id="x", status="pending", created_at=now, domain="d",
-            priority_signal=1.5,  # type: ignore[arg-type]
+            priority_signal=1.5,
         )
 
 
 def test_commitment_record_approval_statuses() -> None:
     for status in ("pending_approval", "approved", "rejected", "deferred"):
         c = CommitmentRecord(
-            commitment_id="x", status=status,  # type: ignore[arg-type]
+            commitment_id="x", status=status,
             created_at=now, domain="d", priority_signal=0.5,
         )
         assert c.status == status

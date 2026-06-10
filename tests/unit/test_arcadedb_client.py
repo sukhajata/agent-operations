@@ -94,7 +94,7 @@ class MockArcadeDBClient(ArcadeDBClient):
         self,
         command: str,
         params: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         self._post_calls.append({
             "command": command,
             "params": params or {},
@@ -102,6 +102,8 @@ class MockArcadeDBClient(ArcadeDBClient):
         response = self._mock_response
         if not response.is_success:
             raise ArcadeDBQueryError(f"Command failed (HTTP {response.status_code})")
+        result = cast(list[dict[str, Any]], response.json()["result"])
+        return list(result) if isinstance(result, list) else []
 
 
 # --- Client tests ---

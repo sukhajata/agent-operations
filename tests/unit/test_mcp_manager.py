@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -41,14 +41,18 @@ def test_read_permitted_server() -> None:
     mock_response = MagicMock()
     mock_response.text = json.dumps({"data": "hello"})
     mock_response.raise_for_status = MagicMock()
-    manager._http.post = AsyncMock(return_value=mock_response)
+
+    async def _mock_post(*args: object, **kwargs: object) -> MagicMock:
+        return mock_response
+
+    manager._http.post = _mock_post  # type: ignore[method-assign]
 
     # Also mock the event emission to avoid real ArcadeDB calls
     async def _mock_emit_validated(*args: object, **kwargs: object) -> None:
         pass
 
     import shared.mcp.manager
-    shared.mcp.manager.emit_validated = _mock_emit_validated  # type: ignore[assignment]
+    shared.mcp.manager.emit_validated = _mock_emit_validated  # type: ignore[attr-defined]
 
     async def _run() -> None:
         result = await manager.read(
