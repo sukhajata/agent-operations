@@ -33,7 +33,7 @@ def build_verification_graph(
     """Build and compile the verification agent LangGraph.
 
     Graph flow:
-        poll_for_observations → enforce_independence → investigate → emit_finding → poll...
+        poll_for_observations → investigate → emit_finding → poll...
         (conditional: if no signal found → END)
     """
     graph = StateGraph(VerificationState)
