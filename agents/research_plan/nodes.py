@@ -291,8 +291,8 @@ async def write_checkpoint(
     if commitment is None:
         return {}
 
-    iteration = state["iteration"]
-    max_iter = state["max_iterations"]
+    iteration = state.get("iteration", 0)
+    max_iter = state.get("max_iterations", MAX_RESEARCH_ITERATIONS)
     next_action = "produce plan" if iteration >= max_iter else "continue research"
 
     checkpoint = CognitiveCheckpoint(
@@ -308,7 +308,8 @@ async def write_checkpoint(
         await _write(db_client, commitment.commitment_id, checkpoint)
     except Exception as e:
         logger.error("Failed to write checkpoint: %s", e)
-    return {}
+
+    return {"iteration": iteration + 1}
 
 
 async def produce_plan(
