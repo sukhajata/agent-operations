@@ -33,13 +33,6 @@ def create_search_graph_tool(client: ArcadeDBClient) -> Any:  # noqa: ANN401
             "InvestigationFinding",
             "CompetitorCapability",
         )
-        for vertex_type in vertex_types:
-        results: list[dict[str, Any]] = []
-        vertex_types = (
-            "ProductStructure",
-            "InvestigationFinding",
-            "CompetitorCapability",
-        )
         pattern = f"%{query.strip()}%" if query.strip() else "%"
 
         for vertex_type in vertex_types:
@@ -51,11 +44,6 @@ def create_search_graph_tool(client: ArcadeDBClient) -> Any:  # noqa: ANN401
                     "LIMIT 50",
                     {"pattern": pattern},
                 )
-                for r in records:
-                    r["@type"] = vertex_type
-                results.extend(records)
-            except Exception:
-                continue
                 for r in records:
                     r["@type"] = vertex_type
                 results.extend(records)

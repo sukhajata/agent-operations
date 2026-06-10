@@ -93,17 +93,10 @@ async def observe(
     model_with_tools = model.bind_tools(tools)
     tool_node = ToolNode(tools)
 
-    from langchain_core.messages import HumanMessage, SystemMessage
-    from langchain_core.messages.utils import messages_from_dict
-
-    raw_messages: list[Any] = list(state.get("messages", []))
-    messages: list[Any]
-    if raw_messages and isinstance(raw_messages[0], dict):
-        messages = messages_from_dict(raw_messages)  # type: ignore[arg-type]
-    else:
-        messages = list(raw_messages)
-
+    messages: list[Any] = list(state.get("messages", []))
     if not messages:
+        from langchain_core.messages import HumanMessage, SystemMessage
+
         messages = [
             SystemMessage(content=system),
             HumanMessage(content=f"Begin investigating the {mandate.domain} domain."),
@@ -133,9 +126,11 @@ async def observe(
             if iteration >= 3:
                 break
 
-    from langchain_core.messages.utils import messages_to_dict
-
-    serializable_messages = messages_to_dict(messages)
+    serializable_messages = []
+    for m in messages:
+        if hasattr(m, "model_dump"):
+            serializable_messages.append(m.model_dump())
+        elif isinstance(m, dict):
             serializable_messages.append(m)
         else:
             serializable_messages.append({"role": "assistant", "content": str(m)})
