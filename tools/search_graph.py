@@ -34,11 +34,28 @@ def create_search_graph_tool(client: ArcadeDBClient) -> Any:  # noqa: ANN401
             "CompetitorCapability",
         )
         for vertex_type in vertex_types:
+        results: list[dict[str, Any]] = []
+        vertex_types = (
+            "ProductStructure",
+            "InvestigationFinding",
+            "CompetitorCapability",
+        )
+        pattern = f"%{query.strip()}%" if query.strip() else "%"
+
+        for vertex_type in vertex_types:
             try:
                 records = await client.execute_query(
-                    f"SELECT node_id, node_type, confidence, last_reinforced, "
-                    f"revalidation_required FROM {vertex_type} LIMIT 50"
+                    "SELECT node_id, node_type, confidence, last_reinforced, revalidation_required "
+                    f"FROM {vertex_type} "
+                    "WHERE node_id LIKE :pattern OR node_type LIKE :pattern "
+                    "LIMIT 50",
+                    {"pattern": pattern},
                 )
+                for r in records:
+                    r["@type"] = vertex_type
+                results.extend(records)
+            except Exception:
+                continue
                 for r in records:
                     r["@type"] = vertex_type
                 results.extend(records)
