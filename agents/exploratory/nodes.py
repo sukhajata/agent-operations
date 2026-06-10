@@ -133,11 +133,9 @@ async def observe(
             if iteration >= 3:
                 break
 
-    serializable_messages = []
-    for m in messages:
-        if hasattr(m, "model_dump"):
-            serializable_messages.append(m.model_dump())
-        elif isinstance(m, dict):
+    from langchain_core.messages.utils import messages_to_dict
+
+    serializable_messages = messages_to_dict(messages)
             serializable_messages.append(m)
         else:
             serializable_messages.append({"role": "assistant", "content": str(m)})
