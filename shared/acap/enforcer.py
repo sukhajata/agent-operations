@@ -157,7 +157,6 @@ class ACAPEnforcer:
                 reasoning=violation.reason,
                 sources=[],
                 focus_id=violation.focus_id,
-                stage="observation",
                 novelty_flag=True,
             )
 

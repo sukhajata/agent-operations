@@ -8,6 +8,7 @@ import pytest
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
+    AgentFinding,
     AgentSignal,
     CommitmentTransition,
 )
@@ -33,8 +34,22 @@ def _valid_event(event_type: str) -> dict[str, Any]:
             "reasoning": "test reasoning",
             "sources": ["source-1"],
             "focus_id": "obj-1",
-            "stage": "observation",
             "novelty_flag": False,
+        }
+    if event_type == "AgentFinding":
+        return {
+            "event_type": "AgentFinding",
+            "ts": SAMPLE_DATETIME,
+            "agent_id": "agent-1",
+            "mtp_version": "1.0",
+            "claim": "verified claim",
+            "domain": "test",
+            "confidence": 0.95,
+            "reasoning": "verified via independent analysis",
+            "sources": ["source-1"],
+            "focus_id": "obj-1",
+            "verdict": "confirmed",
+            "originating_signal_ts": SAMPLE_DATETIME,
         }
     if event_type == "AgentAction":
         return {
@@ -75,16 +90,14 @@ def test_validate_agent_signal() -> None:
     assert isinstance(result, AgentSignal)
     assert result.agent_id == "agent-1"
     assert result.confidence == 0.8
-    assert result.stage == "observation"
 
 
-def test_validate_agent_signal_finding() -> None:
-    event = _valid_event("AgentSignal")
-    event["stage"] = "finding"
-    event["confidence"] = 0.95
+def test_validate_agent_finding() -> None:
+    event = _valid_event("AgentFinding")
     result = validate_event(event)
-    assert isinstance(result, AgentSignal)
-    assert result.stage == "finding"
+    assert isinstance(result, AgentFinding)
+    assert result.verdict == "confirmed"
+    assert result.confidence == 0.95
 
 
 def test_validate_agent_action() -> None:
@@ -116,13 +129,6 @@ def test_validate_unknown_event_type() -> None:
     event = _valid_event("AgentSignal")
     event["event_type"] = "UnknownEvent"
     with pytest.raises(EventSchemaError, match="Unknown event_type"):
-        validate_event(event)
-
-
-def test_validate_rejects_removed_agent_finding() -> None:
-    event = _valid_event("AgentSignal")
-    event["event_type"] = "AgentFinding"
-    with pytest.raises(EventSchemaError, match="has been removed"):
         validate_event(event)
 
 

@@ -217,7 +217,6 @@ def test_emit_event_signal() -> None:
         reasoning="found via graph search",
         sources=["node-42"],
         focus_id="obj-001",
-        stage="observation",
         novelty_flag=True,
     )
 
@@ -229,7 +228,6 @@ def test_emit_event_signal() -> None:
         assert body["params"]["confidence"] == 0.8
         assert body["params"]["focus_id"] == "obj-001"
         assert body["params"]["claim"] == "interesting finding"
-        assert body["params"]["stage"] == "observation"
 
     asyncio.run(_run())
 

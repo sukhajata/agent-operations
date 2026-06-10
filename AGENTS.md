@@ -24,7 +24,7 @@ Agents **MAY** modify all directories in this repository except:
 
 Any code that emits events **MUST** use the canonical schemas in `shared/event_schemas/`. Every event **MUST** carry: `agent_id`, `focus_id`, `mtp_version`, `timestamp`.
 
-`AgentSignal` uses `stage: 'observation'|'finding'` to differentiate exploratory observations from verification findings. `AgentFinding` and `ObjectiveTransition` are removed — use `AgentSignal` with `stage='finding'` and `CommitmentTransition` respectively.
+`AgentSignal` and `AgentFinding` are separate types: `AgentSignal` for exploratory observations, `AgentFinding` for verification conclusions with a `verdict` field (`confirmed`, `contradicted`, or `inconclusive`). `ObjectiveTransition` is removed — use `CommitmentTransition`.
 
 ## 5. ACAP Constraints
 

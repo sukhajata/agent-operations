@@ -13,6 +13,7 @@ from typing import Any
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
+    AgentFinding,
     AgentSignal,
     CommitmentTransition,
 )
@@ -20,7 +21,7 @@ from schema.timeseries.event_log import (
 from .client import ArcadeDBClient
 
 Event = (
-    AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition
+    AgentSignal | AgentFinding | AgentAction | AgentCheckpoint | CommitmentTransition
 )
 
 

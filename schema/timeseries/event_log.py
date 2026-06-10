@@ -1,7 +1,8 @@
 """Event log dataclasses for ArcadeDB TimeSeries types.
 
 Defines the event types used in the Agent Operations event log:
-- AgentSignal: Exploratory observations and verification findings (stage='observation'|'finding')
+- AgentSignal: Exploratory agent observations (7-day retention)
+- AgentFinding: Verification agent conclusions with verdict (90-day retention)
 - AgentAction: Agent tool executions, operations, and worker lifecycle events
 - AgentCheckpoint: Agent decision boundaries
 - CommitmentTransition: Commitment lifecycle state changes
@@ -16,10 +17,9 @@ from typing import Any, Literal
 
 @dataclass
 class AgentSignal:
-    """Exploratory agent observation or verification finding.
+    """Exploratory agent observation emitted to the event log.
 
-    stage='observation': emitted by exploratory agents (retention: 7 days)
-    stage='finding': emitted by verification agents (retention: 90 days)
+    Retention: 7 days.
     """
 
     event_type: str
@@ -32,12 +32,38 @@ class AgentSignal:
     reasoning: str
     sources: list[str]
     focus_id: str | None
-    stage: Literal["observation", "finding"]
     novelty_flag: bool
 
     def __post_init__(self) -> None:
         if self.event_type != "AgentSignal":
             raise ValueError(f"event_type must be 'AgentSignal', got '{self.event_type}'")
+        if not 0.0 <= self.confidence <= 1.0:
+            raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
+
+
+@dataclass
+class AgentFinding:
+    """Verification agent conclusion confirming or contradicting an observation.
+
+    Retention: 90 days.
+    """
+
+    event_type: str
+    ts: datetime
+    agent_id: str
+    mtp_version: str
+    claim: str
+    domain: str
+    confidence: float
+    reasoning: str
+    sources: list[str]
+    focus_id: str | None
+    verdict: Literal["confirmed", "contradicted", "inconclusive"]
+    originating_signal_ts: datetime
+
+    def __post_init__(self) -> None:
+        if self.event_type != "AgentFinding":
+            raise ValueError(f"event_type must be 'AgentFinding', got '{self.event_type}'")
         if not 0.0 <= self.confidence <= 1.0:
             raise ValueError(f"confidence must be in [0.0, 1.0], got {self.confidence}")
 

@@ -63,7 +63,6 @@ def create_emit_signal_tool(
             "reasoning": reasoning,
             "sources": sources,
             "focus_id": focus_id,
-            "stage": "observation",
             "novelty_flag": is_novel,
         }
         await emit_validated(signal, client)

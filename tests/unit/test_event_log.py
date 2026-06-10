@@ -5,12 +5,13 @@ import pytest
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
+    AgentFinding,
     AgentSignal,
     CommitmentTransition,
 )
 
 
-def test_agent_signal_observation() -> None:
+def test_agent_signal_valid() -> None:
     signal = AgentSignal(
         event_type="AgentSignal",
         ts=datetime.now(UTC),
@@ -22,31 +23,13 @@ def test_agent_signal_observation() -> None:
         reasoning="Observed heap growth over 24h with no corresponding traffic increase",
         sources=["heap_dump_2026-06-10.hprof", "metrics/dashboard-42"],
         focus_id="obj-001",
-        stage="observation",
         novelty_flag=True,
     )
     assert signal.confidence == 0.8
     assert signal.novelty_flag is True
-    assert signal.stage == "observation"
-
-
-def test_agent_signal_finding() -> None:
-    signal = AgentSignal(
-        event_type="AgentSignal",
-        ts=datetime.now(UTC),
-        agent_id="verifier-1",
-        mtp_version="1.0",
-        claim="The memory leak is confirmed in the auth module",
-        domain="performance",
-        confidence=0.95,
-        reasoning="Verified via independent code analysis and heap profiling",
-        sources=["heap_dump_2026-06-10.hprof", "code_review/PR-42"],
-        focus_id="obj-001",
-        stage="finding",
-        novelty_flag=False,
-    )
-    assert signal.stage == "finding"
-    assert signal.confidence == 0.95
+    assert signal.claim == "The system has a memory leak in the auth module"
+    assert signal.focus_id == "obj-001"
+    assert len(signal.sources) == 2
 
 
 def test_agent_signal_focus_id_none_for_free_exploration() -> None:
@@ -61,7 +44,6 @@ def test_agent_signal_focus_id_none_for_free_exploration() -> None:
         reasoning="test reasoning",
         sources=[],
         focus_id=None,
-        stage="observation",
         novelty_flag=False,
     )
     assert signal.focus_id is None
@@ -80,7 +62,6 @@ def test_agent_signal_wrong_event_type() -> None:
             reasoning="test",
             sources=[],
             focus_id=None,
-            stage="observation",
             novelty_flag=False,
         )
 
@@ -98,7 +79,6 @@ def test_agent_signal_confidence_too_high() -> None:
             reasoning="test",
             sources=[],
             focus_id=None,
-            stage="observation",
             novelty_flag=False,
         )
 
@@ -116,8 +96,76 @@ def test_agent_signal_confidence_too_low() -> None:
             reasoning="test",
             sources=[],
             focus_id=None,
-            stage="observation",
             novelty_flag=False,
+        )
+
+
+def test_agent_finding_valid() -> None:
+    finding = AgentFinding(
+        event_type="AgentFinding",
+        ts=datetime.now(UTC),
+        agent_id="verifier-1",
+        mtp_version="1.0",
+        claim="The memory leak is confirmed in the auth module",
+        domain="performance",
+        confidence=0.95,
+        reasoning="Verified via independent code analysis and heap profiling",
+        sources=["heap_dump_2026-06-10.hprof", "code_review/PR-42"],
+        focus_id="obj-001",
+        verdict="confirmed",
+        originating_signal_ts=datetime.now(UTC),
+    )
+    assert finding.verdict == "confirmed"
+    assert finding.confidence == 0.95
+
+
+def test_agent_finding_contradicted() -> None:
+    finding = AgentFinding(
+        event_type="AgentFinding",
+        ts=datetime.now(UTC),
+        agent_id="verifier-2",
+        mtp_version="1.0",
+        claim="The memory leak is in the auth module",
+        domain="performance",
+        confidence=0.9,
+        reasoning="Heap growth traced to connection pool, not auth",
+        sources=["conn_pool_analysis"],
+        focus_id="obj-001",
+        verdict="contradicted",
+        originating_signal_ts=datetime.now(UTC),
+    )
+    assert finding.verdict == "contradicted"
+
+
+def test_agent_finding_inconclusive() -> None:
+    finding = AgentFinding(
+        event_type="AgentFinding",
+        ts=datetime.now(UTC),
+        agent_id="verifier-3",
+        mtp_version="1.0",
+        claim="Unclear performance regression source",
+        domain="performance",
+        confidence=0.4,
+        reasoning="Insufficient data to confirm or contradict",
+        sources=[],
+        focus_id=None,
+        verdict="inconclusive",
+        originating_signal_ts=datetime.now(UTC),
+    )
+    assert finding.verdict == "inconclusive"
+
+
+def test_agent_finding_wrong_event_type() -> None:
+    with pytest.raises(ValueError, match="event_type must be 'AgentFinding'"):
+        AgentFinding(
+            event_type="Wrong",
+            ts=datetime.now(UTC),
+            agent_id="v1",
+            mtp_version="1.0",
+            claim="x", domain="d", confidence=0.5, reasoning="r",
+            sources=[], focus_id=None,
+            verdict="confirmed",
+            originating_signal_ts=datetime.now(UTC),
         )
 
 
@@ -205,7 +253,6 @@ def test_confidence_boundary_zero() -> None:
         reasoning="test",
         sources=[],
         focus_id=None,
-        stage="observation",
         novelty_flag=False,
     )
     assert signal.confidence == 0.0
@@ -223,7 +270,6 @@ def test_confidence_boundary_one() -> None:
         reasoning="test",
         sources=[],
         focus_id=None,
-        stage="observation",
         novelty_flag=False,
     )
     assert signal.confidence == 1.0

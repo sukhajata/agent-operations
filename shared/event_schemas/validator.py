@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from schema.timeseries.event_log import (
     AgentAction,
     AgentCheckpoint,
+    AgentFinding,
     AgentSignal,
     CommitmentTransition,
 )
@@ -21,6 +22,7 @@ if TYPE_CHECKING:
 
 VALID_EVENT_TYPES = frozenset({
     "AgentSignal",
+    "AgentFinding",
     "AgentAction",
     "AgentCheckpoint",
     "CommitmentTransition",
@@ -33,17 +35,17 @@ REQUIRED_FIELDS = frozenset({
     "event_type",
 })
 
-Event = AgentSignal | AgentAction | AgentCheckpoint | CommitmentTransition
+Event = AgentSignal | AgentFinding | AgentAction | AgentCheckpoint | CommitmentTransition
 
 _EVENT_CLASSES: dict[str, type[Event]] = {
     "AgentSignal": AgentSignal,
+    "AgentFinding": AgentFinding,
     "AgentAction": AgentAction,
     "AgentCheckpoint": AgentCheckpoint,
     "CommitmentTransition": CommitmentTransition,
 }
 
 _REMOVED_EVENT_TYPES = frozenset({
-    "AgentFinding",
     "ObjectiveTransition",
 })
 
@@ -88,8 +90,7 @@ def validate_event(event: dict[str, Any]) -> Event:
     if event_type in _REMOVED_EVENT_TYPES:
         raise EventSchemaError(
             f"Event type '{event_type}' has been removed. "
-            f"Use 'AgentSignal' with stage='finding' instead of 'AgentFinding', "
-            f"or 'CommitmentTransition' instead of 'ObjectiveTransition'."
+            f"Use 'CommitmentTransition' instead of 'ObjectiveTransition'."
         )
 
     if event_type not in VALID_EVENT_TYPES:

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 from agents.exploratory.graph import build_exploratory_graph
@@ -10,19 +9,19 @@ from agents.exploratory.state import ExploratoryState
 from shared.config.loader import MandateDefinition
 
 
-def _make_mandate() -> MandateDefinition:
+def _make_mandate(agent_type: str = "free") -> MandateDefinition:
     return MandateDefinition(
         name="test_mandate",
         domain="competitive_intelligence",
-        agent_type="free",
+        agent_type=agent_type,
         polling_interval_minutes=30,
         signal_threshold=0.6,
     )
 
 
-def _make_state() -> ExploratoryState:
+def _make_state(agent_type: str = "free") -> ExploratoryState:
     return {
-        "mandate": _make_mandate(),
+        "mandate": _make_mandate(agent_type),
         "mtp_version": "1.0",
         "agent_id": "agent-test-1",
         "last_cursor": None,
@@ -38,7 +37,7 @@ def _make_state() -> ExploratoryState:
 def _mock_aimessage(
     content: str = "SUMMARY: Done.",
     tool_calls: list[object] | None = None,
-) -> object:
+) -> MagicMock:
     msg = MagicMock()
     msg.content = content
     msg.tool_calls = tool_calls or []
@@ -122,24 +121,124 @@ def test_graph_compiles_from_package() -> None:
     assert _build is not None
 
 
-# --- Helpers ---
+# --- node tests ---
 
 
-def _make_async_mock_response(
-    status_code: int = 200, result: list[dict[str, Any]] | None = None
-) -> AsyncMock:
-    response = AsyncMock()
-    response.is_success = status_code < 400
-    response.status_code = status_code
-    response.json = lambda: {"result": result or []}
-    return response
+def test_load_context_loads_mtp() -> None:
+    from agents.exploratory.nodes import load_context
+
+    client = MagicMock()
+    client.execute_query = AsyncMock(return_value=[{
+        "mtp_id": "mtp-1", "version": "2.0", "purpose": "test",
+        "constraints": [], "intent_description": "test",
+        "created_at": "2026-01-01T00:00:00Z", "created_by": "tester",
+    }])
+
+    async def _run() -> None:
+        result = await load_context(_make_state(), db_client=client)
+        assert result["mtp_version"] == "2.0"
+
+    import asyncio
+    asyncio.run(_run())
 
 
-def _make_mock_generation(text: str) -> object:
-    gen = MagicMock()
-    gen.text = text
-    gen.generations = [[gen]]
-    gen.llm_output = {}
-    gen.run = []
-    gen.message = _mock_aimessage(text)
-    return gen
+def test_load_context_no_mtp() -> None:
+    from agents.exploratory.nodes import load_context
+
+    client = MagicMock()
+    client.execute_query = AsyncMock(return_value=[])
+
+    async def _run() -> None:
+        result = await load_context(_make_state(), db_client=client)
+        assert result == {}
+
+    import asyncio
+    asyncio.run(_run())
+
+
+def test_update_cursor_sets_timestamps() -> None:
+    from agents.exploratory.nodes import update_cursor
+
+    async def _run() -> None:
+        result = await update_cursor(_make_state())
+        assert "last_cursor" in result
+        assert "run_at" in result
+
+    import asyncio
+    asyncio.run(_run())
+
+
+def test_observe_free_mode_produces_summary() -> None:
+    from agents.exploratory.nodes import observe
+
+    state = _make_state(agent_type="free")
+    model = MagicMock()
+    mock_response = _mock_aimessage(content="SUMMARY: Explored domain. No novel findings.")
+    mock_response.tool_calls = []
+    model.bind_tools = MagicMock(return_value=model)
+    model.ainvoke = AsyncMock(return_value=mock_response)
+
+    async def _run() -> None:
+        result = await observe(state, model=model, tools=[])
+        assert result["completed"] is True
+        assert "messages" in result
+
+    import asyncio
+    asyncio.run(_run())
+
+
+def test_observe_focus_mode_produces_summary() -> None:
+    from agents.exploratory.nodes import observe
+
+    state = _make_state(agent_type="focus")
+    model = MagicMock()
+    mock_response = _mock_aimessage(content="SUMMARY: Investigated focus. No novel findings.")
+    mock_response.tool_calls = []
+    model.bind_tools = MagicMock(return_value=model)
+    model.ainvoke = AsyncMock(return_value=mock_response)
+
+    async def _run() -> None:
+        result = await observe(state, model=model, tools=[])
+        assert result["completed"] is True
+
+    import asyncio
+    asyncio.run(_run())
+
+
+def test_observe_respects_max_iterations() -> None:
+    from agents.exploratory.nodes import observe
+
+    state = _make_state(agent_type="free")
+    state["max_iterations"] = 2
+    model = MagicMock()
+    mock_response = _mock_aimessage(content="Still investigating...")
+    mock_response.tool_calls = []
+    model.bind_tools = MagicMock(return_value=model)
+    model.ainvoke = AsyncMock(return_value=mock_response)
+
+    async def _run() -> None:
+        result = await observe(state, model=model, tools=[])
+        assert result["completed"] is True
+
+    import asyncio
+    asyncio.run(_run())
+
+
+def test_observe_uses_existing_messages() -> None:
+    from agents.exploratory.nodes import observe
+
+    state = _make_state(agent_type="free")
+    state["messages"] = [{"role": "assistant", "content": "previous message"}]
+    model = MagicMock()
+    mock_response = _mock_aimessage(content="SUMMARY: Done.")
+    mock_response.tool_calls = []
+    model.bind_tools = MagicMock(return_value=model)
+    model.ainvoke = AsyncMock(return_value=mock_response)
+
+    async def _run() -> None:
+        result = await observe(state, model=model, tools=[])
+        assert result["completed"] is True
+
+    import asyncio
+    asyncio.run(_run())
+
