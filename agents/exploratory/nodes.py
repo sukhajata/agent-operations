@@ -93,17 +93,21 @@ async def observe(
     model_with_tools = model.bind_tools(tools)
     tool_node = ToolNode(tools)
 
-    messages: list[Any] = list(state.get("messages", []))
-    if not messages:
-        from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.messages import HumanMessage, SystemMessage
+    from langchain_core.messages.utils import messages_from_dict
 
+    raw_messages: list[Any] = list(state.get("messages", []))
+    messages: list[Any]
+    if raw_messages and isinstance(raw_messages[0], dict):
+        messages = messages_from_dict(raw_messages)  # type: ignore[arg-type]
+    else:
+        messages = list(raw_messages)
+
+    if not messages:
         messages = [
             SystemMessage(content=system),
-            HumanMessage(
-                content=f"Begin investigating the {mandate.domain} domain."
-            ),
+            HumanMessage(content=f"Begin investigating the {mandate.domain} domain."),
         ]
-
     signals_emitted = state.get("signals_emitted", 0)
     iteration = 0
 
