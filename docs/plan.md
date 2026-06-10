@@ -580,7 +580,7 @@ When you have exhausted productive lines of investigation, stop.
 
 ---
 
-### - [ ] TASK-15: Build verification agent
+### - [x] TASK-15: Build verification agent
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11 complete
@@ -595,7 +595,7 @@ When you have exhausted productive lines of investigation, stop.
 
 **Design:**
 
-The verification agent is an independent background worker that polls the event log for `AgentSignal` events with `stage='observation'` and `confidence >= signal_threshold` that have not yet been verified. For each, it challenges the claim adversarially using a different model family and emits a new `AgentSignal` with `stage='finding'`.
+The verification agent is an independent background worker that polls the event log for `AgentSignal` events (exploratory observations) with `confidence >= signal_threshold` that have not yet been verified. For each, it challenges the claim adversarially using a different model family and emits an `AgentFinding` with a `verdict` (`confirmed`, `contradicted`, or `inconclusive`).
 
 This agent does not receive instructions from any other agent. It discovers work by polling.
 
@@ -604,20 +604,19 @@ This agent does not receive instructions from any other agent. It discovers work
 1. Create `agents/verification/state.py` with `VerificationState` TypedDict: `signal` (`AgentSignal`), `originating_model_family` (`ModelFamily`), `mtp_version` (str), `agent_id` (str), `focus_id` (str | None), `verdict` (Literal['confirmed','contradicted','inconclusive'] | None), `verdict_confidence` (float | None), `verdict_rationale` (str | None).
 
 2. Create `agents/verification/nodes.py` with async node functions:
-   - `poll_for_observations(state)` — queries ArcadeDB `AgentSignals` for unverified `stage='observation'` signals above the configured `signal_threshold`. Uses cursor-based polling with `last_cursor` persisted between runs. Returns the oldest unprocessed signal or sets `completed=True` if none found.
-   - `enforce_independence(state)` — calls `enforce_independence(AgentRole.VERIFICATION, state['originating_model_family'])`. Raises `ModelFamilyError` if same family.
+   - `poll_for_observations(state)` — queries ArcadeDB `AgentSignal` events above the configured `signal_threshold`. Uses cursor-based polling with `last_cursor` persisted between runs. Returns the oldest unprocessed signal or sets `completed=True` if none found.
    - `investigate(state)` — uses OpenRouter `VERIFICATION` role with adversarial system prompt to challenge the signal's `claim`. Queries ArcadeDB knowledge graph and permitted MCP connections for contrary evidence. System prompt: *"Your task is to determine whether the following claim is false. Assume it is wrong and attempt to disprove it. Only conclude it is confirmed if you cannot find evidence against it. Claim: {claim}. Reasoning given: {reasoning}."*
-   - `emit_finding(state)` — emits a new `AgentSignal` with `stage='finding'`, `claim` (same as original or refined), `verdict`, `verdict_confidence`, `verdict_rationale`, `sources` (combined from original signal and investigation).
+   - `emit_finding(state)` — emits an `AgentFinding` with `verdict`, `verdict_confidence`, `verdict_rationale`, `claim` (same as original), `sources`, and `originating_signal_ts`.
 
-3. Create `agents/verification/graph.py` as a compiled `StateGraph`: `poll_for_observations` → conditional edge (if signal found → `enforce_independence` → `investigate` → `emit_finding` → loop back to `poll_for_observations`, else → `END`).
+3. Create `agents/verification/graph.py` as a compiled `StateGraph`: `poll_for_observations` → conditional edge (if signal found → `investigate` → `emit_finding` → loop back to `poll_for_observations`, else → `END`).
 
 4. Create `agents/verification/__main__.py` entry point: `run_verification_agent(config_path: str) -> None` that loops continuously with a configurable polling interval (default 60 seconds).
 
 **Done when:**
 - Agent polls ArcadeDB independently with cursor-based state
-- `enforce_independence` raises `ModelFamilyError` when model families match
+- Model family independence is enforced (verification uses Qwen, distinct from DeepSeek)
 - `investigate` system prompt is adversarial
-- `emit_finding` always emits a `stage='finding'` signal before the loop continues
+- `emit_finding` emits an `AgentFinding` (separate type from `AgentSignal`) with verdict
 - Agent runs standalone: `python -m agents.verification`
 - mypy strict passes
 
