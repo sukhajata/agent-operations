@@ -174,7 +174,7 @@ async def emit_finding(
 
     finding: dict[str, Any] = {
         "event_type": "AgentFinding",
-        "ts": datetime.now(UTC).isoformat(),
+        "ts": datetime.now(UTC),
         "agent_id": state["agent_id"],
         "mtp_version": state["mtp_version"],
         "claim": signal.claim,
