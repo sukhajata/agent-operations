@@ -100,9 +100,24 @@ async def poll_for_findings(
         if isinstance(ts, str):
             event["ts"] = datetime.fromisoformat(ts)
 
-        finding = AgentFinding(**event)
-        return {"finding": finding}
+        originating_ts = event.get("originating_signal_ts")
+        if isinstance(originating_ts, str):
+            event["originating_signal_ts"] = datetime.fromisoformat(originating_ts)
 
+        finding = AgentFinding(**event)
+        return {
+            "finding": finding,
+            "last_cursor": finding.ts,
+            "completed": False,
+            "commitment": None,
+            "graph_context": [],
+            "artifact_context": [],
+            "event_delta": [],
+            "hypotheses": [],
+            "current_understanding": None,
+            "plan": None,
+            "iteration": 0,
+        }
     latest_ts: datetime = cursor
     for e in events:
         ts_val = e.get("ts")
