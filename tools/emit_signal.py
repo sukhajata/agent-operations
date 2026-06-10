@@ -54,7 +54,7 @@ def create_emit_signal_tool(
         """
         signal: dict[str, Any] = {
             "event_type": "AgentSignal",
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": datetime.now(UTC),
             "agent_id": agent_id,
             "mtp_version": mtp_version,
             "claim": claim,
