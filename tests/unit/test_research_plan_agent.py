@@ -324,8 +324,7 @@ def test_write_checkpoint() -> None:
 
         async def _run() -> None:
             result = await write_checkpoint(state, db_client=MagicMock())
-            assert result is not None
-
+            assert result.get("iteration") == state["iteration"] + 1
         asyncio.run(_run())
     finally:
         id_mod.write_checkpoint = original
