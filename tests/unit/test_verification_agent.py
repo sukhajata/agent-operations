@@ -339,7 +339,9 @@ def test_model_family_verification() -> None:
 
 
 def test_verification_main_module_imports() -> None:
-    pass
+    import importlib
+
+    importlib.import_module("agents.verification.__main__")
 
 
 
