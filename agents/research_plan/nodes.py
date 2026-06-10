@@ -141,8 +141,11 @@ async def create_commitment(
     if finding is None:
         return {"completed": True}
 
-    commitment_id = f"com-{finding.focus_id or finding.agent_id}"
-    commitment = CommitmentRecord(
+    if not finding.focus_id:
+        logger.error("Confirmed AgentFinding missing focus_id; cannot create CommitmentRecord")
+        return {"completed": True}
+
+    commitment_id = f"com-{finding.focus_id}"
         commitment_id=commitment_id,
         status="active",
         created_at=datetime.now(UTC),
