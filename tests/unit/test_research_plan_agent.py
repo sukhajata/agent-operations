@@ -102,7 +102,9 @@ def test_poll_finds_confirmed_finding() -> None:
             result = await poll_for_findings(state, db_client=db_client)
             assert result.get("finding") is not None
             assert result["finding"].verdict == "confirmed"
-
+            assert isinstance(result["finding"].originating_signal_ts, datetime)
+            assert result.get("completed") is False
+            assert result.get("last_cursor") == result["finding"].ts
         asyncio.run(_run())
     finally:
         ts_mod.poll_events = original
