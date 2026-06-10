@@ -140,10 +140,24 @@ async def investigate(
     except json.JSONDecodeError:
         result = {}
 
+    verdict_raw = result.get("verdict")
+    verdict = (
+        verdict_raw
+        if verdict_raw in {"confirmed", "contradicted", "inconclusive"}
+        else "inconclusive"
+    )
+
+    confidence_raw = result.get("verdict_confidence", 0.5)
+    confidence = confidence_raw if isinstance(confidence_raw, (int, float)) else 0.5
+    confidence = min(1.0, max(0.0, float(confidence)))
+
+    rationale_raw = result.get("verdict_rationale")
+    rationale = rationale_raw if isinstance(rationale_raw, str) else content
+
     return {
-        "verdict": result.get("verdict", "inconclusive"),
-        "verdict_confidence": result.get("verdict_confidence", 0.5),
-        "verdict_rationale": result.get("verdict_rationale", content),
+        "verdict": verdict,
+        "verdict_confidence": confidence,
+        "verdict_rationale": rationale,
     }
 
 
