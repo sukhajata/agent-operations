@@ -67,7 +67,10 @@ async def run_agent(
     agent_id = f"verification-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}"
     mtp_version = config.mtp.version
 
-    tools = create_exploratory_tools(db_client, agent_id, mtp_version)
+    tools = [
+        create_search_graph_tool(db_client),
+        create_search_signals_tool(db_client),
+    ]
     graph = build_verification_graph(model, db_client, tools, signal_threshold)
 
     logger.info(
