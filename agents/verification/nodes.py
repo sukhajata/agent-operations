@@ -184,7 +184,7 @@ async def emit_finding(
         "sources": signal.sources,
         "focus_id": state["focus_id"],
         "verdict": state["verdict"] or "inconclusive",
-        "originating_signal_ts": signal.ts.isoformat(),
+        "originating_signal_ts": signal.ts,
     }
     await emit_validated(finding, db_client)
     logger.info(
