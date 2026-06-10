@@ -10,9 +10,20 @@ properties:
     type: string
     enum: [free, focus]
     default: free
+  focus_id:
+    type: string
+    minLength: 1
   polling_interval_minutes:
     type: integer
   signal_threshold:
     type: number
     minimum: 0.0
     maximum: 1.0
+allOf:
+  - if:
+      properties:
+        agent_type:
+          const: focus
+      required: [agent_type]
+    then:
+      required: [focus_id]

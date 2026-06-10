@@ -30,6 +30,7 @@ class MandateDefinition:
     agent_type: str  # 'free' | 'focus'
     polling_interval_minutes: int
     signal_threshold: float
+    focus_id: str | None = None
 
 
 @dataclass
@@ -73,6 +74,7 @@ def _load_mandates(mandates_dir: Path) -> list[MandateDefinition]:
             polling_interval_minutes=int(data["polling_interval_minutes"]),
             signal_threshold=float(data["signal_threshold"]),
             agent_type=str(data.get("agent_type", "free")),
+            focus_id=str(data["focus_id"]) if data.get("focus_id") is not None else None,
         ))
     return mandates
 

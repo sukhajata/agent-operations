@@ -59,7 +59,11 @@ async def run_agent(
 
     focus_id: str | None = None
     if mandate.agent_type == "focus":
-        focus_id = mandate.name
+        if mandate.focus_id is None:
+            raise ValueError(
+                f"Mandate '{mandate_name}' has agent_type='focus' but no focus_id configured"
+            )
+        focus_id = mandate.focus_id
 
     tools = create_exploratory_tools(db_client, agent_id, mtp_version, focus_id)
     graph = build_exploratory_graph(model, db_client, tools)
