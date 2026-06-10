@@ -25,7 +25,8 @@ class AgentRole(StrEnum):
 
     EXPLORATORY = "exploratory"
     VERIFICATION = "verification"
-    OBJECTIVE = "objective"
+    RESEARCH_PLAN = "research_plan"
+    IMPLEMENTATION = "implementation"
     ORCHESTRATION = "orchestration"
 
 
@@ -41,7 +42,8 @@ class ModelFamily(StrEnum):
 MODEL_ASSIGNMENTS: dict[AgentRole, tuple[str, ModelFamily]] = {
     AgentRole.EXPLORATORY: (MODEL_DEEPSEEK_V4_FLASH, ModelFamily.DEEPSEEK),
     AgentRole.VERIFICATION: (MODEL_QWEN3_7_MAX, ModelFamily.QWEN),
-    AgentRole.OBJECTIVE: (MODEL_DEEPSEEK_V4_PRO, ModelFamily.DEEPSEEK),
+    AgentRole.RESEARCH_PLAN: (MODEL_DEEPSEEK_V4_PRO, ModelFamily.DEEPSEEK),
+    AgentRole.IMPLEMENTATION: (MODEL_DEEPSEEK_V4_FLASH, ModelFamily.DEEPSEEK),
     AgentRole.ORCHESTRATION: (MODEL_DEEPSEEK_V4_FLASH, ModelFamily.DEEPSEEK),
 }
 

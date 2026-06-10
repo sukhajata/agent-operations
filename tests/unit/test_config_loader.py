@@ -48,11 +48,9 @@ resource_ceiling:
     (mandates_dir / "competitor_monitor.yaml").write_text("""
 name: competitor_monitor
 domain: competitive_intelligence
+agent_type: free
 polling_interval_minutes: 30
 signal_threshold: 0.6
-search_queries:
-  - competitor updates
-  - industry announcements
 """)
 
     return base
@@ -87,6 +85,31 @@ def test_load_project_config_empty_mandates(valid_config_dir: Path) -> None:
         f.unlink()
     config = load_project_config(str(valid_config_dir))
     assert config.mandates == []
+
+
+def test_load_project_config_focus_mandate_requires_focus_id(valid_config_dir: Path) -> None:
+    (valid_config_dir / "mandates" / "competitor_monitor.yaml").write_text("""
+name: competitor_monitor
+domain: competitive_intelligence
+agent_type: focus
+polling_interval_minutes: 30
+signal_threshold: 0.6
+""")
+    with pytest.raises(ConfigValidationError):
+        load_project_config(str(valid_config_dir))
+
+
+def test_load_project_config_focus_mandate_loads_focus_id(valid_config_dir: Path) -> None:
+    (valid_config_dir / "mandates" / "competitor_monitor.yaml").write_text("""
+name: competitor_monitor
+domain: competitive_intelligence
+agent_type: focus
+focus_id: focus-001
+polling_interval_minutes: 30
+signal_threshold: 0.6
+""")
+    config = load_project_config(str(valid_config_dir))
+    assert config.mandates[0].focus_id == "focus-001"
 
 
 def test_config_validation_error_message() -> None:

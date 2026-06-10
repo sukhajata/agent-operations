@@ -56,32 +56,53 @@ class OpenRouterClient:
         originating_model_family: ModelFamily | None = None,
         provider: dict[str, Any] | None = None,
     ) -> str:
-        """Execute an LLM completion with automatic model and provider routing.
+        """Execute an LLM completion. Returns the content string."""
+        data = await self.chat(
+            role, messages, system, max_tokens,
+            enable_caching, originating_model_family, provider,
+        )
+        choices = data.get("choices", [])
+        if not choices:
+            raise OpenRouterAPIError("OpenRouter returned no choices in response")
+        message = choices[0].get("message", {})
+        content = message.get("content", "")
+        return str(content)
+
+    async def chat(
+        self,
+        role: AgentRole,
+        messages: list[dict[str, Any]],
+        system: str,
+        max_tokens: int = 4096,
+        enable_caching: bool = False,
+        originating_model_family: ModelFamily | None = None,
+        provider: dict[str, Any] | None = None,
+        tools: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Execute an LLM completion. Returns the full API response dict.
+
+        The response dict includes choices[].message which may contain
+        tool_calls when tools are provided.
 
         Args:
-            role: The agent role (determines model and provider defaults)
+            role: The agent role
             messages: Conversation messages in OpenAI format
-            system: System prompt (prepended to messages)
+            system: System prompt
             max_tokens: Maximum completion tokens
-            enable_caching: Enable prompt caching (OBJECTIVE role)
-            originating_model_family: Model family of the originating agent
-                (required for VERIFICATION role independence check)
-            provider: Optional provider routing config (order, only,
-                allow_fallbacks, quantizations, etc). Overrides the default
-                routing from PROVIDER_ROUTING when specified.
+            enable_caching: Enable prompt caching
+            originating_model_family: For verification independence check
+            provider: Optional provider routing config override
+            tools: Optional OpenAI-compatible tool definitions
 
         Returns:
-            The completion text from the LLM
+            Full OpenRouter API response dict
 
         Raises:
-            ModelFamilyError: If verification independence is violated
-            OpenRouterAPIError: On API error response
-            OpenRouterConnectionError: On connection failure
+            ModelFamilyError, OpenRouterAPIError, OpenRouterConnectionError
         """
         if originating_model_family is not None:
             enforce_independence(role, originating_model_family)
 
-        model_name, model_family = MODEL_ASSIGNMENTS[role]
         model_name, model_family = MODEL_ASSIGNMENTS[role]
         provider_config = (
             provider if provider is not None else PROVIDER_ROUTING[model_family]
@@ -97,15 +118,18 @@ class OpenRouterClient:
             "max_tokens": max_tokens,
             "provider": provider_config,
         }
+        if tools:
+            body["tools"] = tools
+            body["tool_choice"] = "auto"
 
         headers: dict[str, str] = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json",
         }
 
-        if enable_caching and role == AgentRole.OBJECTIVE:
+        if enable_caching and role == AgentRole.RESEARCH_PLAN:
             headers["HTTP-Referer"] = "agent-operations"
-            headers["X-Title"] = "Agent Operations — Objective Agent"
+            headers["X-Title"] = "Agent Operations — Research/Plan Agent"
 
         try:
             response = await self._client.post(
@@ -124,11 +148,5 @@ class OpenRouterClient:
                 f"{response.text[:500]}"
             )
 
-        data = response.json()
-        choices = data.get("choices", [])
-        if not choices:
-            raise OpenRouterAPIError("OpenRouter returned no choices in response")
-
-        message = choices[0].get("message", {})
-        content = message.get("content", "")
-        return str(content)
+        data: dict[str, Any] = response.json()
+        return data

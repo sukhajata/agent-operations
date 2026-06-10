@@ -19,13 +19,18 @@ class ConfigValidationError(Exception):
 
 @dataclass
 class MandateDefinition:
-    """Exploratory agent mandate."""
+    """Exploratory agent mandate.
+
+    agent_type: 'free' explores a domain with no pre-set direction;
+        'focus' follows a specific FocusRecord from the registry.
+    """
 
     name: str
     domain: str
+    agent_type: str  # 'free' | 'focus'
     polling_interval_minutes: int
     signal_threshold: float
-    search_queries: list[str]
+    focus_id: str | None = None
 
 
 @dataclass
@@ -68,7 +73,8 @@ def _load_mandates(mandates_dir: Path) -> list[MandateDefinition]:
             domain=str(data["domain"]),
             polling_interval_minutes=int(data["polling_interval_minutes"]),
             signal_threshold=float(data["signal_threshold"]),
-            search_queries=[str(q) for q in data["search_queries"]],
+            agent_type=str(data.get("agent_type", "free")),
+            focus_id=str(data["focus_id"]) if data.get("focus_id") is not None else None,
         ))
     return mandates
 

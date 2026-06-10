@@ -14,7 +14,7 @@ from schema.timeseries.event_log import (
     AgentCheckpoint,
     AgentFinding,
     AgentSignal,
-    ObjectiveTransition,
+    CommitmentTransition,
 )
 
 if TYPE_CHECKING:
@@ -22,29 +22,32 @@ if TYPE_CHECKING:
 
 VALID_EVENT_TYPES = frozenset({
     "AgentSignal",
-    "AgentAction",
     "AgentFinding",
+    "AgentAction",
     "AgentCheckpoint",
-    "ObjectiveTransition",
+    "CommitmentTransition",
 })
 
 REQUIRED_FIELDS = frozenset({
     "agent_id",
-    "objective_id",
     "mtp_version",
     "ts",
     "event_type",
 })
 
-Event = AgentSignal | AgentAction | AgentFinding | AgentCheckpoint | ObjectiveTransition
+Event = AgentSignal | AgentFinding | AgentAction | AgentCheckpoint | CommitmentTransition
 
 _EVENT_CLASSES: dict[str, type[Event]] = {
     "AgentSignal": AgentSignal,
-    "AgentAction": AgentAction,
     "AgentFinding": AgentFinding,
+    "AgentAction": AgentAction,
     "AgentCheckpoint": AgentCheckpoint,
-    "ObjectiveTransition": ObjectiveTransition,
+    "CommitmentTransition": CommitmentTransition,
 }
+
+_REMOVED_EVENT_TYPES = frozenset({
+    "ObjectiveTransition",
+})
 
 
 class EventSchemaError(ValueError):
@@ -54,7 +57,7 @@ class EventSchemaError(ValueError):
 def check_required_fields(event: dict[str, Any]) -> None:
     """Verify all required fields are present and non-empty.
 
-    Fields checked: agent_id, objective_id, mtp_version, ts, event_type.
+    Fields checked: agent_id, mtp_version, ts, event_type.
 
     Raises EventSchemaError if any required field is missing or empty.
     """
@@ -83,6 +86,13 @@ def validate_event(event: dict[str, Any]) -> Event:
     check_required_fields(event)
 
     event_type = event["event_type"]
+
+    if event_type in _REMOVED_EVENT_TYPES:
+        raise EventSchemaError(
+            f"Event type '{event_type}' has been removed. "
+            f"Use 'CommitmentTransition' instead of 'ObjectiveTransition'."
+        )
+
     if event_type not in VALID_EVENT_TYPES:
         raise EventSchemaError(
             f"Unknown event_type '{event_type}'. "

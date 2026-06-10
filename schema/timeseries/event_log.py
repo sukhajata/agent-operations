@@ -1,19 +1,18 @@
 """Event log dataclasses for ArcadeDB TimeSeries types.
 
-Defines the five event types used in the Agent Operations event log:
-- AgentSignal: Exploratory agent observations
-- AgentAction: Agent tool executions and operations
-- AgentFinding: Verification and objective agent conclusions
-- AgentCheckpoint: Objective agent decision boundaries
-- ObjectiveTransition: Objective lifecycle state changes
+Defines the event types used in the Agent Operations event log:
+- AgentSignal: Exploratory agent observations (7-day retention)
+- AgentFinding: Verification agent conclusions with verdict (90-day retention)
+- AgentAction: Agent tool executions, operations, and worker lifecycle events
+- AgentCheckpoint: Agent decision boundaries
+- CommitmentTransition: Commitment lifecycle state changes
 
-Each event type carries: event_type, ts, agent_id, objective_id, mtp_version, payload.
-AgentSignal and AgentFinding additionally carry confidence and novelty_flag.
+Each event type carries: event_type, ts, agent_id, mtp_version.
 """
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -26,10 +25,13 @@ class AgentSignal:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
     mtp_version: str
-    payload: dict[str, Any]
+    claim: str
+    domain: str
     confidence: float
+    reasoning: str
+    sources: list[str]
+    focus_id: str | None
     novelty_flag: bool
 
     def __post_init__(self) -> None:
@@ -40,27 +42,8 @@ class AgentSignal:
 
 
 @dataclass
-class AgentAction:
-    """Agent tool execution or operational event.
-
-    Retention: 30 days.
-    """
-
-    event_type: str
-    ts: datetime
-    agent_id: str
-    objective_id: str
-    mtp_version: str
-    payload: dict[str, Any]
-
-    def __post_init__(self) -> None:
-        if self.event_type != "AgentAction":
-            raise ValueError(f"event_type must be 'AgentAction', got '{self.event_type}'")
-
-
-@dataclass
 class AgentFinding:
-    """Verification or objective agent conclusion.
+    """Verification agent conclusion confirming or contradicting an observation.
 
     Retention: 90 days.
     """
@@ -68,11 +51,15 @@ class AgentFinding:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
     mtp_version: str
-    payload: dict[str, Any]
+    claim: str
+    domain: str
     confidence: float
-    novelty_flag: bool
+    reasoning: str
+    sources: list[str]
+    focus_id: str | None
+    verdict: Literal["confirmed", "contradicted", "inconclusive"]
+    originating_signal_ts: datetime
 
     def __post_init__(self) -> None:
         if self.event_type != "AgentFinding":
@@ -82,8 +69,30 @@ class AgentFinding:
 
 
 @dataclass
+class AgentAction:
+    """Agent tool execution, operation, or worker lifecycle event.
+
+    Use payload.action for the action type (e.g. 'WorkerStarted', 'WorkerCompleted',
+    'tool_call', 'query').
+
+    Retention: 30 days.
+    """
+
+    event_type: str
+    ts: datetime
+    agent_id: str
+    commitment_id: str | None
+    mtp_version: str
+    payload: dict[str, Any]
+
+    def __post_init__(self) -> None:
+        if self.event_type != "AgentAction":
+            raise ValueError(f"event_type must be 'AgentAction', got '{self.event_type}'")
+
+
+@dataclass
 class AgentCheckpoint:
-    """Objective agent decision boundary checkpoint.
+    """Agent decision boundary checkpoint.
 
     Retention: 180 days.
     """
@@ -91,7 +100,7 @@ class AgentCheckpoint:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
+    commitment_id: str
     mtp_version: str
     payload: dict[str, Any]
 
@@ -101,8 +110,8 @@ class AgentCheckpoint:
 
 
 @dataclass
-class ObjectiveTransition:
-    """Objective lifecycle state change event.
+class CommitmentTransition:
+    """Commitment lifecycle state change event.
 
     Retention: indefinite (0 days).
     """
@@ -110,12 +119,12 @@ class ObjectiveTransition:
     event_type: str
     ts: datetime
     agent_id: str
-    objective_id: str
+    commitment_id: str
     mtp_version: str
     payload: dict[str, Any]
 
     def __post_init__(self) -> None:
-        if self.event_type != "ObjectiveTransition":
+        if self.event_type != "CommitmentTransition":
             raise ValueError(
-                f"event_type must be 'ObjectiveTransition', got '{self.event_type}'"
+                f"event_type must be 'CommitmentTransition', got '{self.event_type}'"
             )

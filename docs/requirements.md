@@ -2,7 +2,7 @@
 
 **Agent Platform — Initial Repository Requirements**
 
-June 2026 — v0.1 — Internal
+June 2026 — v0.2 — Internal
 
 ## 1. Purpose and Scope
 
@@ -14,7 +14,7 @@ It is not an agent for a specific product. It is the operational infrastructure 
 
 ### 1.1 What This Document Covers
 
-This document specifies the requirements for the initial repository — the minimum viable platform sufficient to run all four agent types against a single configured project, with full observability, ACAP-governed boundaries, and the five-store data architecture. It does not specify requirements for multi-tenant SaaS deployment, commercial licensing, or multi-organisation governance — those are subsequent phases.
+This document specifies the requirements for the initial repository — the minimum viable platform sufficient to run all five agent types against a single configured project, with full observability, ACAP-governed boundaries, and the five-store data architecture. It does not specify requirements for multi-tenant SaaS deployment, commercial licensing, or multi-organisation governance — those are subsequent phases.
 
 ### 1.2 What Is Explicitly Out of Scope
 
@@ -29,38 +29,39 @@ This document specifies the requirements for the initial repository — the mini
 
 ## 2. Architecture Overview
 
-The platform is organised around five stores and four agent types. The stores provide the data substrate; the agent types provide the operational behaviour. Neither is derivable from the other — both must be designed explicitly.
+The platform is organised around five stores and five agent types. The stores provide the data substrate; the agent types provide the operational behaviour. Neither is derivable from the other — both must be designed explicitly.
 
 ### 2.1 The Five Stores
 
 | Store | Role and nature |
 |-------|----------------|
 | **Identity Store** | What are we and what are we allowed to do? Holds the MTP, ACAPs, governance rules, and policy constraints. Versioned, strongly consistent. Agents read from it on every decision cycle. Writes are rare, human-governed, and go through formal governance. |
-| **Objective Registry** | What are we trying to achieve and where are we? Holds active objectives as persistent entities: status, priority signal, cognitive checkpoint, progress, assigned agents. Updated by checkpoint events. Operational artifacts discarded at objective closure. |
+| **Focus Registry** | What are we exploring and investigating? Holds active focus records: status, domain, priority signal, assigned agents. Focuses represent targeted exploration areas spawned by the research/plan agent and approved by humans. |
+| **Commitment Registry** | What are we committed to delivering? Holds active commitments as persistent entities: status (including approval states), priority signal, cognitive checkpoint, implementation state, assigned agents. Updated by checkpoint events. Moves through pending → pending_approval → approved → implementation → complete. |
 | **Event Log** | What has happened recently? Append-only, time-partitioned, retention-managed. The coordination substrate through which all agent types communicate. Implemented in ArcadeDB time-series with per-type retention policies. |
 | **Knowledge Graph** | What do we know and how do things relate? Persistent, temporally weighted, queryable by relationship. Confidence decays by node type; reinforced by ongoing agent activity. The accumulation of organisational learning across objectives and time. |
 | **Structural Artifacts** | What actually exists right now? Codebase, schemas, APIs, documentation. Ground truth accessed directly via MCP. Referenced by the knowledge graph but not stored in it. |
 
-### 2.2 The Four Agent Types
+### 2.2 The Five Agent Types
 
 | Type | Character | Description |
 |------|-----------|-------------|
-| **Exploratory** | Always-on scouts | Scheduled polling against standing mandates. Observes the external environment and internal system state. Self-filters before emitting to the event log. Source of ambient organisational intelligence. |
-| **Verification** | Short-lived investigators | Spawned in response to findings above a significance threshold. Must use a different model family from the originating agent. Attempts to disprove findings, not confirm them. Terminates on completion. |
-| **Objective** | Assigned executors | Triggered by objective assignment from the orchestration layer. Reads event log and knowledge graph for research context. Writes cognitive checkpoints at decision boundaries. Replaceable via checkpoint handoff. |
-| **Orchestration** | System allocators | Continuous polling against event log and objective registry. Watches signal density and objective health. Creates and closes objectives. Provisions and terminates agents. Escalates to human review at defined thresholds. |
-| **Implementation** | Code executors | Triggered by human-approved objectives. Reads the plan from the objective agent's checkpoint. Executes code changes, writes files, runs tests. Emits implementation events. Terminates on completion or failure. |
+| **Exploratory** | Always-on scouts | Scheduled polling against standing mandates. Two modes: free exploration (discovers the unknown) and focus follower (investigates a specific FocusRecord). Self-filters before emitting to the event log with `stage='observation'`. |
+| **Verification** | Short-lived investigators | Polls the event log independently for unverified `AgentSignal` events with `stage='observation'`. Must use a different model family from the originating agent. Attempts to disprove findings, not confirm them. Emits `AgentSignal` with `stage='finding'`. |
+| **Research/Plan** | Assigned researchers | Triggered by commitment assignment from the orchestration layer. Reads event log and knowledge graph for research context. Creates FocusRecord entries for colony exploration. Writes cognitive checkpoints and execution plans. |
+| **Implementation** | Code executors | Triggered by human-approved commitments. Reads the execution plan from the cognitive checkpoint. Executes code changes, writes files, runs tests. Emits implementation events. Terminates on completion or failure. |
+| **Orchestration** | System allocators | Continuous polling against event log and commitment registry. Watches signal density and commitment health. Creates and closes commitments. Provisions and terminates agents. Escalates to human review at defined thresholds. |
 
 ### 2.3 The Coordination Loop
 
-The five agent types operate in a self-sustaining loop with a human gate: **Sense → Reinforce → Verify → Commit → Execute → Checkpoint → Promote → Approve → Implement → Close**. The loop does not require human initiation below the escalation threshold. Humans govern the thresholds, handle escalations, own the identity store, set exploratory agent standing mandates, and approve implementation tasks before execution.
+The five agent types operate in a self-sustaining loop with a human gate: **Sense → Verify → Research/Plan → Approve → Implement → Close → Promote**. Exploratory agents emit observations; verification agents challenge and confirm them; research/plan agents create commitments and focuses; humans approve implementation; implementation agents execute; orchestration manages the lifecycle. The loop does not require human initiation below the escalation threshold. Humans govern the thresholds, handle escalations, own the identity store, set exploratory agent standing mandates, and approve commitments before implementation.
 
 ### 2.4 Technology Stack
 
 | Layer | Technology and rationale |
 |-------|-------------------------|
-| **Inference** | OpenRouter API. DeepSeek V4 Flash (exploratory, orchestration). Qwen3.7-Plus (verification — different model family). DeepSeek V4 Pro (objective — prompt caching enabled). |
-| **Data** | ArcadeDB single instance. Time-series (event log), graph (knowledge graph), document (identity store, objective registry), vector (embeddings). Apache 2.0, self-hosted on Fly.io. |
+| **Inference** | OpenRouter API. DeepSeek V4 Flash (exploratory, implementation, orchestration). Qwen3.7-Max (verification — different model family). DeepSeek V4 Pro (research/plan — prompt caching enabled). |
+| **Data** | ArcadeDB single instance. Time-series (event log), graph (knowledge graph), document (identity store, focus registry, commitment registry), vector (embeddings). Apache 2.0, self-hosted on Fly.io. |
 | **LangGraph checkpoints** | PostgreSQL via `langgraph-checkpoint-postgres`. Aurora or Neon. LangGraph open-source only — no LangSmith Deployment dependency. |
 | **Observability — LLM** | Langfuse Cloud. OpenTelemetry export. Traces, token costs, prompt quality. Core tier ($29/month) for initial deployment. |
 | **Observability — infrastructure** | Fly.io native Prometheus/Grafana. Datadog via OpenTelemetry exporter for unified alerting. Custom agent metrics as Prometheus gauges. |
@@ -90,8 +91,8 @@ Agents access ArcadeDB through two complementary mechanisms:
 1. **Direct HTTP client** (`shared/arcadedb/client.py`) — for high-frequency operations:
    - Cursor-based event log polling (exploratory, orchestration agents)
    - Bulk event writes (all agents emitting to event log)
-   - Graph traversal queries (objective agent research loop)
-   - Checkpoint writes (objective agent decision boundaries)
+   - Graph traversal queries (research/plan agent research loop)
+   - Checkpoint writes (research/plan agent decision boundaries)
    
    Direct access provides better performance, connection pooling, and query optimization for hot paths.
 
@@ -112,7 +113,7 @@ ArcadeDB is a single storage engine with multiple type systems layered on top. A
 
 **Type categories:**
 
-- `DOCUMENT` — structured records (MTP, ACAP definitions, objective records)
+- `DOCUMENT` — structured records (MTP, ACAP definitions, focus records, commitment records)
 - `VERTEX` / `EDGE` — graph nodes and relationships (knowledge graph)
 - `TIMESERIES` — time-stamped events with retention policies (event log)
 - Vector embeddings — for semantic similarity queries
@@ -121,8 +122,8 @@ ArcadeDB is a single storage engine with multiple type systems layered on top. A
 
 Types can be linked via edges regardless of their category. For example:
 
-- An `ObjectiveRecord` (document) can link to its `AgentCheckpoint` events (time series) via `HAS_CHECKPOINT` edges
-- A `ProductStructure` node (graph vertex) can link to the `AgentFinding` events (time series) that created it
+- An `CommitmentRecord` (document) can link to its `AgentCheckpoint` events (time series) via `HAS_CHECKPOINT` edges
+- A `ProductStructure` node (graph vertex) can link to the `AgentSignal` events (time series) that created it
 - An `ACAPDefinition` (document) can be queried alongside the scope violation events that reference it
 
 This eliminates the need for separate databases or application-level joins. Relationships are native to the storage engine.
@@ -141,13 +142,13 @@ The platform repository contains only reusable infrastructure — no project-spe
 |------|---------------------|
 | `agents/exploratory/` | Exploratory agent implementation. LangGraph state graph. Standing mandate loader. Signal quality filter. Novelty check against event log. |
 | `agents/verification/` | Verification agent implementation. Independence enforcement — model family check at instantiation. Adversarial investigation pattern. Confidence-weighted verdict emission. |
-| `agents/objective/` | Objective agent implementation. Research loop (graph → MCP → event log delta). Checkpoint discipline at node boundaries. Scope enforcement via ACAP. |
-| `agents/implementation/` | Implementation agent implementation. Polls for approved objectives. Executes code changes from checkpoint plans. Emits implementation events. ACAP-enforced file operations. |
-| `agents/orchestration/` | Orchestration agent implementation. Signal density monitor. Objective lifecycle manager. Agent provisioner. Escalation logic. Knowledge graph promotion trigger. Human approval workflow coordination. |
-| `shared/event_schemas/` | Canonical event type definitions and validation. All five event categories: signals, actions, findings, checkpoints, state transitions. Schema version management. |
-| `shared/acap/` | ACAP loader, validator, and runtime enforcer. Reads from identity store. Applies boundary checks before each agent action. Scope violation detection. |
+| `agents/research_plan/` | Research/plan agent implementation. Research loop (graph → MCP → event log). Creates FocusRecord entries for colony exploration. Commitment planning. Checkpoint discipline at node boundaries. |
+| `agents/implementation/` | Implementation agent implementation. Polls for approved commitments. Executes code changes from checkpoint plans. Emits implementation events. ACAP-enforced file operations. |
+| `agents/orchestration/` | Orchestration agent implementation. Signal density monitor. Commitment and focus lifecycle manager. Agent provisioner. Escalation logic. Knowledge graph promotion trigger. Human approval workflow coordination. |
+| `shared/event_schemas/` | Canonical event type definitions and validation. Four event categories: AgentSignal (stage='observation'|'finding'), AgentAction, AgentCheckpoint, CommitmentTransition. Schema version management. |
+| `shared/acap/` | ACAP loader, validator, and runtime enforcer. Reads from identity store. Applies boundary checks before each agent action. Scope violation detection and logging. |
 | `shared/arcadedb/` | ArcadeDB client. Query helpers for each store type. Time-series polling with cursor management. Graph traversal patterns. Confidence decay functions. |
-| `shared/openrouter/` | OpenRouter client. Agent-role to model mapping. Provider routing configuration per agent type. Prompt caching configuration for objective agents. |
+| `shared/openrouter/` | OpenRouter client. Agent-role to model mapping. Provider routing configuration per agent type. Prompt caching configuration for research/plan agents. Model family independence enforcement. |
 | `shared/mcp/` | MCP connection manager. Loads permitted connections from ACAP. Structural artifact access patterns. Ground truth read helpers. |
 | `schema/timeseries/` | ArcadeDB TimeSeries type definitions for each event category. Retention policy configuration. Tag and field schemas. |
 | `schema/graph/` | Knowledge graph node type definitions. Base node types: product structure, decision, investigation, competitor, customer pattern. Confidence decay rates by type. |
@@ -184,7 +185,7 @@ The platform must load the project MTP from the configured external path on star
 
 **Description:**
 
-The platform must load Agent Capability and Authorization Profiles from the identity store for each agent type. ACAP boundaries must be enforced before every agent action — tool calls, event emissions, objective modifications, and MCP reads. Scope violations must be rejected and logged, not silently ignored.
+The platform must load Agent Capability and Authorization Profiles from the identity store for each agent type. ACAP boundaries must be enforced before every agent action — tool calls, event emissions, registry modifications, and MCP reads. Scope violations must be rejected and logged, not silently ignored.
 
 **Acceptance:**
 
@@ -192,7 +193,7 @@ The platform must load Agent Capability and Authorization Profiles from the iden
 - Tool calls outside ACAP scope are rejected before execution
 - MCP connections not listed in the agent's ACAP are inaccessible
 - Scope violations are emitted as state transition events to the event log
-- ACAP validation passes for all four agent types against a valid project configuration
+- ACAP validation passes for all agent types against a valid project configuration
 
 #### REQ-ID-03: Project Configuration Schema Validation
 
@@ -213,11 +214,11 @@ The platform must validate all project configuration files against published sch
 
 **Description:**
 
-The platform must initialise the required ArcadeDB TimeSeries types on first run if they do not exist. Five types are required: `AgentSignal` (7-day retention), `AgentAction` (30-day retention), `AgentFinding` (90-day retention), `AgentCheckpoint` (180-day retention), `ObjectiveTransition` (indefinite). Initialisation must be idempotent — safe to run against an already-initialised database.
+The platform must initialise the required ArcadeDB TimeSeries types on first run if they do not exist. Four types are required: `AgentSignal` (7-day retention for observations, 90-day for findings — both use same type with `stage` field), `AgentAction` (30-day retention), `AgentCheckpoint` (180-day retention), `CommitmentTransition` (indefinite). Initialisation must be idempotent — safe to run against an already-initialised database.
 
 **Acceptance:**
 
-- All five TimeSeries types are created with correct retention policies on a fresh ArcadeDB instance
+- All four TimeSeries types are created with correct retention policies on a fresh ArcadeDB instance
 - Re-running initialisation against an existing database produces no error and no data loss
 - Each type enforces the correct tag and field schema on write
 
@@ -225,7 +226,7 @@ The platform must initialise the required ArcadeDB TimeSeries types on first run
 
 **Description:**
 
-All four agent types must emit events to the event log using the canonical event schemas. Every event must carry: event type, timestamp (nanosecond precision), agent identity, objective reference, MTP version, payload structured to the event type, confidence score (for signals and findings), and novelty flag. Events that fail schema validation must be rejected before write.
+All agent types must emit events to the event log using the canonical event schemas. Every event must carry: event type, timestamp (nanosecond precision), agent identity, focus ID, MTP version, payload structured to the event type. AgentSignal additionally carries `claim`, `domain`, `confidence`, `reasoning`, `sources`, `stage` (`'observation'` or `'finding'`), and `novelty_flag`. Events that fail schema validation must be rejected before write.
 
 **Acceptance:**
 
@@ -243,7 +244,7 @@ All consuming agents must read from the event log using cursor-based queries (`W
 **Acceptance:**
 
 - Exploratory and orchestration agents poll at a configurable interval (default: 30 seconds)
-- Verification and objective agents read relevant events after instantiation using a cursor
+- Verification and research/plan agents read relevant events after instantiation using a cursor
 - Query execution plans confirm partition pruning is occurring (no full scans)
 - Cursor state survives agent restart via LangGraph checkpoint
 
@@ -278,11 +279,11 @@ The platform must implement confidence decay for all knowledge graph nodes. Deca
 
 **Description:**
 
-The orchestration agent must execute a promotion step at objective closure. Promotion classifies checkpoint content into: discard (operational state), promote as durable node, promote as medium-durability node, reinforce existing node, or return to event log as finding. Checkpoints themselves must not be written to the graph — only extracted epistemic content.
+The orchestration agent must execute a promotion step at commitment closure. Promotion classifies checkpoint content into: discard (operational state), promote as durable node, promote as medium-durability node, reinforce existing node, or return to event log. Checkpoints themselves must not be written to the graph — only extracted epistemic content.
 
 **Acceptance:**
 
-- Objective closure triggers promotion step execution
+- Commitment closure triggers promotion step execution
 - Confirmed findings from checkpoints appear as graph nodes after promotion
 - Rejected hypotheses appear as negative-knowledge edges
 - Operational state from checkpoints is not written to the graph
@@ -294,14 +295,14 @@ The orchestration agent must execute a promotion step at objective closure. Prom
 
 **Description:**
 
-The exploratory agent must execute on a configurable schedule (default: every 30 minutes) against its configured standing mandates. It must apply a quality threshold before emitting, and a novelty check against the event log before emitting a signal that matches an existing signal within the retention window. It must not write to the objective registry.
+The exploratory agent must execute on a configurable schedule (default: every 30 minutes) against its configured standing mandates. It must apply a quality threshold before emitting, and a novelty check against the event log before emitting a signal that matches an existing signal within the retention window. It must not write to the focus or commitment registry.
 
 **Acceptance:**
 
 - Exploratory agent executes on schedule without manual trigger
 - Below-threshold observations are not written to the event log
 - Duplicate signals within the retention window are suppressed
-- Any attempt to write to the objective registry is rejected by ACAP enforcement
+- Any attempt to write to the focus or commitment registry is rejected by ACAP enforcement
 - At least one standing mandate type is supported in v1: competitor monitoring
 
 #### REQ-AG-02: Verification Agent — Independence Enforcement
@@ -317,52 +318,52 @@ The verification agent must be instantiated with a different model family from t
 - Verification verdict is emitted as a finding event with confidence score
 - Agent terminates after emitting its verdict
 
-#### REQ-AG-03: Objective Agent — Research Loop and Checkpoint Discipline
+#### REQ-AG-03: Research/Plan Agent — Research Loop and Checkpoint Discipline
 
 **Description:**
 
-The objective agent must execute the research loop before forming a plan: graph traversal → MCP artifact reads → event log delta read → hypothesis formation. It must write a cognitive checkpoint at every meaningful decision boundary. The checkpoint must contain: hypotheses investigated, findings confirmed or rejected, current best understanding, recommended next action. A replacement agent seeded with the checkpoint must be able to resume without re-executing completed research.
+The research/plan agent must execute the research loop before forming a plan: graph traversal → MCP artifact reads → event log delta read → focus creation for colony exploration → hypothesis formation. It must write a cognitive checkpoint at every meaningful decision boundary. The checkpoint must contain: hypotheses investigated, findings confirmed or rejected, current best understanding, recommended next action, and an optional execution plan (`plan` field). A replacement agent seeded with the checkpoint must be able to resume without re-executing completed research.
 
 **Acceptance:**
 
 - Research loop executes in the correct order before plan formation
 - Cognitive checkpoint is written at each LangGraph node boundary
-- Checkpoint contains all four required fields
+- Checkpoint contains all four required fields plus optional plan
 - A new agent instance seeded with the checkpoint passes a research continuity test — it does not re-investigate hypotheses marked as concluded in the checkpoint
 
 #### REQ-AG-04: Orchestration Agent — Lifecycle Management
 
 **Description:**
 
-The orchestration agent must monitor signal density per objective domain and objective health (checkpoint recency, event density). It must create objectives when verified signals cross the configured significance threshold. It must escalate to the human review queue when: an objective exceeds the resource ceiling, a verification verdict is inconclusive above a significance threshold, or an agent has exceeded its ACAP boundaries. It must trigger knowledge graph promotion at objective closure.
+The orchestration agent must monitor signal density per domain and commitment health (checkpoint recency, event density). It must create commitments when verified findings cross the configured significance threshold. It must escalate to the human review queue when: a commitment exceeds the resource ceiling, a verification verdict is inconclusive above a significance threshold, or an agent has exceeded its ACAP boundaries. It must trigger knowledge graph promotion at commitment closure.
 
 **Acceptance:**
 
-- Objective creation is triggered when signal density crosses the configured threshold
+- Commitment creation is triggered when signal density crosses the configured threshold
 - Escalation events are written to a human review queue for all three escalation conditions
-- Stalled objectives (no checkpoint within the configured window) are detected and flagged
-- Knowledge graph promotion is triggered at every objective closure
+- Stalled commitments (no checkpoint within the configured window) are detected and flagged
+- Knowledge graph promotion is triggered at every commitment closure
 - Orchestration agent makes no content decisions — only structural decisions
 
-#### REQ-AG-05: Objective Agent — Verified Findings Only
+#### REQ-AG-05: Research/Plan Agent — Verified Findings Only
 
 **Description:**
 
-Objective agents must only be instantiated with findings that have been confirmed by a verification agent. Unverified or contradicted findings must not trigger objective creation. The orchestration agent must enforce this verification gate before provisioning an objective agent. This ensures objective agents invest research effort only on validated signals, preventing wasted computation on false positives.
+Research/plan agents must only be instantiated with findings that have been confirmed by a verification agent. Unverified or contradicted findings must not trigger commitment creation. The orchestration agent must enforce this verification gate before provisioning a research/plan agent. This ensures research/plan agents invest effort only on validated signals, preventing wasted computation on false positives.
 
 **Acceptance:**
 
-- Objective creation is blocked when the triggering finding has not been verified
-- Contradicted findings are discarded and do not enter the objective pipeline
-- Inconclusive findings are escalated to the human review queue rather than triggering an objective
+- Commitment creation is blocked when the triggering finding has not been verified
+- Contradicted findings are discarded and do not enter the commitment pipeline
+- Inconclusive findings are escalated to the human review queue rather than triggering a commitment
 - The orchestration agent logs a gate decision event for every finding it evaluates (pass, block, escalate)
-- Integration test confirms an unverified finding does not result in objective creation
+- Integration test confirms an unverified finding does not result in commitment creation
 
 #### REQ-AG-06: Verification Agent — Swarm Coordination
 
 **Description:**
 
-The orchestration agent must coordinate verification agent instantiation to prevent double-handling of findings. When the orchestration agent detects a finding requiring verification, it must: (1) mark the finding as `verification_pending` in the event log, (2) spawn a verification agent with that specific finding, (3) mark the finding as `verification_in_progress` to prevent other orchestration cycles from re-assigning it. Verification agents must not poll for work independently — they are spawned by orchestration with a specific finding to investigate. This swarm coordination pattern ensures each finding is verified exactly once, preventing wasted compute on duplicate verification attempts.
+The orchestration agent must coordinate verification to prevent double-handling. When the orchestration agent detects a finding requiring verification, it must: (1) mark the finding as `verification_pending` in the event log, (2) spawn a verification agent with that specific signal, (3) mark the finding as `verification_in_progress` to prevent other orchestration cycles from re-assigning it. Verification agents must not poll for work independently — they are spawned by orchestration with a specific signal to investigate. This ensures each finding is verified exactly once.
 
 **Acceptance:**
 
@@ -378,18 +379,18 @@ The orchestration agent must coordinate verification agent instantiation to prev
 
 **Description:**
 
-The implementation agent must only execute objectives that have been explicitly approved by a human. It polls the objective registry for objectives with `implementation_status='approved'` and `implementation_state` in `['to_do', 'pending']`. The agent reads the execution plan from the objective's cognitive checkpoint, performs code changes, writes files, runs tests, and emits `AgentAction` events for each step. The agent must enforce ACAP boundaries on all file operations and tool usage. On completion, it updates the objective status to `complete` and promotes findings to the knowledge graph. On failure, it writes a checkpoint and marks the objective as `stalled` for human review.
+The implementation agent must only execute commitments that have been explicitly approved by a human. It polls the commitment registry for commitments with `status='approved'` and `implementation_state` in `['to_do', 'pending']`. The agent reads the execution plan from the commitment's cognitive checkpoint, performs code changes, writes files, runs tests, and emits `AgentAction` events for each step. The agent must enforce ACAP boundaries on all file operations and tool usage. On completion, it updates the commitment status to `complete` and promotes findings to the knowledge graph. On failure, it writes a checkpoint and marks the commitment as `stalled` for human review.
 
 **Acceptance:**
 
-- Implementation agent only processes objectives with `implementation_status='approved'`
-- Implementation agent only processes objectives with `implementation_state` in `['to_do', 'pending']`
-- Implementation agent reads the execution plan from the objective's cognitive checkpoint
+- Implementation agent only processes commitments with `status='approved'`
+- Implementation agent only processes commitments with `implementation_state` in `['to_do', 'pending']`
+- Implementation agent reads the execution plan from the commitment's cognitive checkpoint
 - All file operations are logged as `AgentAction` events
 - ACAP boundaries are enforced for all tool usage
-- On completion, objective status is updated to `complete`
-- On failure, a checkpoint is written and objective is marked `stalled`
-- Integration test confirms unapproved objectives are not executed
+- On completion, commitment status is updated to `complete`
+- On failure, a checkpoint is written and commitment is marked `stalled`
+- Integration test confirms unapproved commitments are not executed
 
 ### 4.5 Human Review and Approval
 
@@ -397,19 +398,18 @@ The implementation agent must only execute objectives that have been explicitly 
 
 **Description:**
 
-The platform must provide a human approval gate before implementation agents execute code changes. When an objective agent completes its research and creates an execution plan, the orchestration agent must mark the objective with `implementation_status='pending_approval'` and `implementation_state='to_do'`. A human reviewer must approve or reject the plan via a UI (CopilotKit-based) before an implementation agent can execute it. The approval decision must be stored in the objective registry with timestamp, reviewer identity, and optional comments. The implementation agent polls for approved objectives and only executes those with `implementation_status='approved'`.
+The platform must provide a human approval gate before implementation agents execute code changes. When a research/plan agent completes its research and creates an execution plan, the orchestration agent must mark the commitment with `status='pending_approval'` and `implementation_state='to_do'`. A human reviewer must approve or reject the plan via a UI (CopilotKit-based) before an implementation agent can execute it. The approval decision must be stored in the commitment registry with timestamp, reviewer identity, and optional comments. The implementation agent polls for approved commitments and only executes those with `status='approved'`.
 
 **Acceptance:**
 
-- Objective registry includes `implementation_status` field with values: `pending_approval`, `approved`, `rejected`, `deferred`
-- Objective registry includes `implementation_state` field with values: `to_do`, `in_progress`, `complete`, `failed`
-- Objective registry includes `approval_metadata` field with: `reviewer_id`, `approved_at`, `comments`
-- Orchestration agent marks completed objectives as `implementation_status='pending_approval'`
+- Commitment registry includes `status` field with values: `pending`, `pending_approval`, `approved`, `rejected`, `deferred`, `active`, `stalled`, `complete`, `escalated`
+- Commitment registry includes `implementation_state` field with values: `to_do`, `in_progress`, `complete`, `failed`
+- Orchestration agent marks completed research/plan commitments as `status='pending_approval'`
 - Human UI displays pending approval items with plan details and context
 - Human can approve, reject, or defer with optional comments
-- Approval decision is stored in objective registry with timestamp and reviewer identity
-- Implementation agent only processes objectives with `implementation_status='approved'`
-- Integration test confirms unapproved objectives cannot be executed
+- Approval decision is stored in commitment registry with timestamp and reviewer identity
+- Implementation agent only processes commitments with `status='approved'`
+- Integration test confirms unapproved commitments cannot be executed
 - UI is built with CopilotKit and provides a clear approval workflow
 
 ### 4.5 Guardrail Ensemble
@@ -426,7 +426,7 @@ All agent outputs must pass through the four-layer guardrail ensemble before del
 - WildGuard and Granite Guardian both run on all substantive agent outputs
 - Presidio PII redaction runs after content classification before any output leaves the platform
 - Block events are written to the event log as action events with violation category
-- A known prompt injection attempt is blocked before reaching the objective agent
+- A known prompt injection attempt is blocked before reaching the research/plan agent
 
 ### 4.6 MCP Integration
 
@@ -434,14 +434,14 @@ All agent outputs must pass through the four-layer guardrail ensemble before del
 
 **Description:**
 
-The platform must load MCP connections from the project ACAP definition. Agents must only be able to access MCP connections explicitly listed in their ACAP. Connection attempts to unlisted MCP servers must be rejected by the ACAP enforcer before the connection is made. MCP read operations must be logged as action events in the event log.
+The platform must load MCP connections from the project ACAP definition. Agents must only be able to access MCP connections explicitly listed in their ACAP. Connection attempts to unlisted MCP servers must be rejected by the ACAP enforcer before the connection is made. MCP read operations must be logged as `AgentAction` events with `commitment_id` in the event log.
 
 **Acceptance:**
 
 - MCP connections not listed in the agent ACAP are inaccessible
 - Successful MCP reads are logged as action events
 - A valid project configuration with at least one MCP connection passes end-to-end read test
-- Connection rejection is logged as a scope violation event
+- ACAP violations (connection rejection) are logged as `AgentSignal` events with `stage='observation'` and `domain='acap'`
 
 ---
 
@@ -453,20 +453,20 @@ The platform must load MCP connections from the project ACAP definition. Agents 
 
 **Description:**
 
-All LLM calls made by all agent types must be traced and exported to Langfuse via OpenTelemetry. Traces must include: model used, input token count, output token count, estimated cost, latency, agent type, objective ID, and MTP version. Traces must be exportable to Langfuse Cloud without self-hosting.
+All LLM calls made by all agent types must be traced and exported to Langfuse via OpenTelemetry. Traces must include: model used, input token count, output token count, estimated cost, latency, agent type, focus ID, and MTP version. Traces must be exportable to Langfuse Cloud without self-hosting.
 
 **Acceptance:**
 
-- All four agent types produce traces visible in Langfuse on a test run
+- All agent types produce traces visible in Langfuse on a test run
 - Token counts and estimated costs are populated on each trace
-- Agent type and objective ID are present as trace metadata
+- Agent type and focus ID are present as trace metadata
 - Langfuse Cloud (Core tier) receives traces without self-hosted infrastructure
 
 #### REQ-OBS-02: Infrastructure Metrics
 
 **Description:**
 
-The platform must export custom Prometheus metrics for agent-level signals: `signal_emission_rate` per agent instance, `checkpoint_write_rate` per objective, `verification_verdict_distribution` (confirmed/contradicted/inconclusive), `objective_completion_rate`, `escalation_rate`. Metrics must be visible in Fly.io's native Grafana.
+The platform must export custom Prometheus metrics for agent-level signals: `signal_emission_rate` per agent instance, `checkpoint_write_rate` per commitment, `verification_verdict_distribution` (confirmed/contradicted/inconclusive), `commitment_completion_rate`, `escalation_rate`. Metrics must be visible in Fly.io's native Grafana.
 
 **Acceptance:**
 
@@ -480,11 +480,11 @@ The platform must export custom Prometheus metrics for agent-level signals: `sig
 
 **Description:**
 
-Objective agent failure must not result in objective progress loss. On detection of agent failure, the orchestration agent must: read the most recent cognitive checkpoint from the objective registry, provision a replacement objective agent seeded with that checkpoint, and have the replacement read event log entries since the checkpoint timestamp. Recovery must not require human intervention below the escalation threshold.
+Research/plan agent failure must not result in commitment progress loss. On detection of agent failure, the orchestration agent must: read the most recent cognitive checkpoint from the commitment registry, provision a replacement research/plan agent seeded with that checkpoint, and have the replacement read event log entries since the checkpoint timestamp. Recovery must not require human intervention below the escalation threshold.
 
 **Acceptance:**
 
-- Simulated objective agent failure results in automatic replacement provisioning
+- Simulated research/plan agent failure results in automatic replacement provisioning
 - Replacement agent resumes from the last checkpoint without re-executing concluded research
 - Recovery time from failure detection to resumed execution is under 2 minutes
 - Recovery event is logged to the event log as a state transition
@@ -543,7 +543,7 @@ The following checks must all pass as required status checks before any pull req
 | `type-check` | Pre-merge required | mypy (Python) strict mode or `tsc --noEmit`. All agent implementations fully typed. |
 | `unit-tests` | Pre-merge required | Pytest or Jest. Coverage threshold: 80% on `shared/` and `agents/` directories. |
 | `schema-validation` | Pre-merge required | All schema definitions in `schema/` validate against their meta-schema. Migration immutability check — no existing migration file is modified. |
-| `acap-validation` | Pre-merge required | All four agent type ACAPs in the reference configuration load and validate without error. Scope boundary checks pass. |
+| `acap-validation` | Pre-merge required | All agent type ACAPs in the reference configuration load and validate without error. Scope boundary checks pass. |
 | `event-schema-tests` | Pre-merge required | Each agent type emits only events conforming to the canonical schemas in `shared/event_schemas/`. Schema violations are detected and fail the check. |
 | `prompt-regression` | Pre-merge required | Each agent type runs against a fixture set of inputs. Output structure (schema validity, tool call patterns, constraint adherence) matches expected. Runs against DeepSeek V4 Flash to keep cost low. |
 | `integration-tests` | Pre-merge required | ArcadeDB and Postgres run as Docker services in the GitHub Actions runner. Full coordination loop executes against them. Promotion logic verified end-to-end. |
@@ -558,12 +558,13 @@ The following are explicitly deferred from v1. They are documented here to infor
 
 | Feature | Rationale for deferral |
 |---------|----------------------|
-| **Conversational agent** | A human-facing conversational agent with session memory (AgentCore or equivalent). Reads from ArcadeDB knowledge graph and objective registry to answer questions about organisational state. Session memory via AgentCore Memory or similar, complementary to ArcadeDB. |
+| **Conversational agent** | A human-facing conversational agent with session memory (AgentCore or equivalent). Reads from ArcadeDB knowledge graph, focus registry, and commitment registry to answer questions about organisational state. Session memory via AgentCore Memory or similar, complementary to ArcadeDB. |
 | **Multi-organisation governance** | Organisation-level MTP that constrains project MTPs. Cross-organisation A2A protocols. Ecosystem Trust protocols from ExO 3.0 SHAPE. |
 | **NeMo Guardrails multi-turn** | Dialog-rail architecture detecting prompt injection across multiple agent turns. Monitor NVIDIA release cadence for production readiness signal. |
 | **ArcadeDB HA cluster** | Three-node Raft cluster for production availability. Snapshot-and-restore bootstrap from single-node. Deferred until single-node deployment proves value. |
 | **MTP evolution governance** | Full governance workflow for MTP revision: trigger conditions, evidence/decision separation, red team process, staged activation, version rollback. v1 MTP is treated as immutable. |
-| **Objective agent code execution** | Objective agents that write and execute code against the target project, not just read and analyse. Requires sandbox environment and additional ACAP constraints. |
+| **Focus lifecycle extensions** | Per-project custom focus lifecycle states and automatic focus spawning based on exploratory signal patterns. v1 supports the base focus lifecycle only. |
+| **Research/plan agent code execution** | Research/plan agents that write and execute code against the target project, not just read and analyse. Requires sandbox environment and additional ACAP constraints. (Implementation agent already handles approved code execution.) |
 | **Self-hosted guardrail GPU** | Running WildGuard and Granite Guardian on self-hosted Fly.io GPU machines. v1 may use managed API endpoints for guardrail models if available, or a reduced guardrail configuration. |
 | **Knowledge graph domain extensions** | Per-project custom node types beyond the base set. Project-specific relationship types. v1 supports the five base node types only. |
 
