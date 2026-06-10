@@ -74,7 +74,7 @@ async def run_agent(
         "run_at": datetime.now(UTC),
         "max_iterations": 10,
         "completed": False,
-        "focus_id": None,
+        "focus_id": focus_id,
     }
 
     result = await graph.ainvoke(initial_state)
