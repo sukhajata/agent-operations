@@ -145,8 +145,8 @@ async def create_commitment(
         logger.error("Confirmed AgentFinding missing focus_id; cannot create CommitmentRecord")
         return {"completed": True}
 
-    commitment_id = f"com-{finding.focus_id}"
-        commitment_id=commitment_id,
+    commitment = CommitmentRecord(
+        commitment_id=f"com-{finding.focus_id}",
         status="active",
         created_at=datetime.now(UTC),
         domain=finding.domain,
@@ -220,10 +220,11 @@ async def read_event_delta(
     if finding is None:
         return {}
 
-    since = finding.originating_signal_ts
-    events = await db_client.execute_query(
-        "SELECT FROM AgentSignal WHERE ts > :since_ts AND domain = :domain ORDER BY ts ASC",
-        {"since_ts": since.isoformat(), "domain": finding.domain},
+    events = await poll_events(
+        db_client,
+        event_type="AgentSignal",
+        since_ts=finding.originating_signal_ts,
+        domain=finding.domain,
         limit=30,
     )
     return {"event_delta": list(events)}
