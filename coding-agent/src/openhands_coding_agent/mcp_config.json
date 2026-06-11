@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "fetch": {
+      "command": "uvx",
+      "args": ["mcp-server-fetch@2026.6.4"]
+    },
+    "tavily": {
+      "command": "npx",
+      "args": ["-y", "tavily-mcp@0.2.20"],
+      "env": {
+        "TAVILY_API_KEY": "${TAVILY_API_KEY}"
+      }
+    },
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@upstash/context7-mcp@3.1.0"]
+    },
+    "strands-agents": {
+      "command": "uvx",
+      "args": ["strands-agents-mcp-server@0.2.7"]
+    },
+    "arcadedb": {
+      "command": "uv",
+      "args": ["run", "python", "-m", "openhands_coding_agent.arcadedb_mcp"],
+      "env": {
+        "ARCADEDB_URL": "${ARCADEDB_URL}",
+        "ARCADEDB_USER": "${ARCADEDB_USER}",
+        "ARCADEDB_PASSWORD": "${ARCADEDB_PASSWORD}"
+      }
+    }
+  }
+}
