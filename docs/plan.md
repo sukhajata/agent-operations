@@ -622,7 +622,7 @@ This agent does not receive instructions from any other agent. It discovers work
 
 ---
 
-### - [ ] TASK-16: Build research/plan agent
+### - [x] TASK-16: Build research/plan agent
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
@@ -637,16 +637,16 @@ This agent does not receive instructions from any other agent. It discovers work
 
 **Design:**
 
-The research/plan agent polls for `AgentSignal` events with `stage='finding'` and `verdict='confirmed'` where no `CommitmentRecord` yet exists for the signal's `focus_id`. When it finds one, it creates a `CommitmentRecord`, runs a research loop to understand the problem space deeply, and produces a plan. The plan is written to a `CognitiveCheckpoint` on the commitment and the commitment is marked `pending_approval`. A human then reviews the plan before implementation proceeds.
+The research/plan agent polls for `AgentFinding` events with `verdict='confirmed'` where no `CommitmentRecord` yet exists for the finding's `focus_id`. When it finds one, it creates a `CommitmentRecord`, runs a research loop to understand the problem space deeply, and produces a plan. The plan is written to a `CognitiveCheckpoint` on the commitment and the commitment is marked `pending_approval`. A human then reviews the plan before implementation proceeds.
 
 This agent earns being a LangGraph graph because the research loop has genuine internal complexity — it reads the knowledge graph, reads artifacts, reads the event delta, forms hypotheses, checks hypotheses, and may loop back if understanding is insufficient.
 
 **Steps:**
 
-1. Create `agents/research_plan/state.py` with `ResearchPlanState` TypedDict: `signal` (`AgentSignal`), `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `graph_context` (list[GraphNode]), `artifact_context` (list[str]), `event_delta` (list[dict]), `hypotheses` (list[HypothesisRecord]), `current_understanding` (str | None), `plan` (str | None), `iteration` (int), `max_iterations` (int), `completed` (bool).
+1. Create `agents/research_plan/state.py` with `ResearchPlanState` TypedDict: `finding` (`AgentFinding`), `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `graph_context` (list[GraphNode]), `artifact_context` (list[str]), `event_delta` (list[dict]), `hypotheses` (list[HypothesisRecord]), `current_understanding` (str | None), `plan` (str | None), `iteration` (int), `max_iterations` (int), `completed` (bool).
 
 2. Create `agents/research_plan/nodes.py` with async node functions:
-   - `poll_for_findings(state)` — queries ArcadeDB `AgentSignals` for verified `stage='finding'` signals with no corresponding `CommitmentRecord`. Uses cursor-based polling.
+   - `poll_for_findings(state)` — queries ArcadeDB `AgentFinding` events for verified findings with no corresponding `CommitmentRecord`. Uses cursor-based polling.
    - `create_commitment(state)` — creates a `CommitmentRecord` with `status='active'` for the signal's `focus_id`.
    - `traverse_graph(state)` — queries ArcadeDB graph from the focus domain node outward `max_depth=3`.
    - `read_artifacts(state)` — uses `MCPConnectionManager` to read structural artifacts identified in `graph_context`.
@@ -702,7 +702,7 @@ This agent must survive restarts mid-execution — `PostgresSaver` checkpointing
    - `execute_plan(state)` — uses OpenRouter `IMPLEMENTATION` role to execute the plan step-by-step, emitting `AgentAction` events for each file operation. Enforces ACAP boundaries on all operations.
    - `run_tests(state)` — executes test suite and captures results.
    - `write_outcome(state)` — marks commitment `complete` on success or `stalled` on failure. Writes final checkpoint.
-   - `promote_findings(state)` — emits `AgentSignal` events with `stage='finding'` for durable knowledge discovered during implementation, for knowledge graph promotion.
+   - `promote_findings(state)` — emits `AgentFinding` events for durable knowledge discovered during implementation, for knowledge graph promotion.
 
 3. Create `agents/implementation/graph.py`: `poll_for_approved` → conditional edge (if commitment found → `load_plan` → `execute_plan` → `run_tests` → `write_outcome` → `promote_findings` → loop to `poll_for_approved`, else → `END`). Compile with `PostgresSaver` checkpointer.
 
@@ -961,7 +961,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 **Steps:**
 
 1. Write tests using pytest and pytest-asyncio. Mock all external calls.
-2. `test_event_schema.py` must cover: all four valid event types parse correctly; `AgentSignal` with `stage='observation'` and `stage='finding'` both parse; `event_type='AgentFinding'` raises `EventSchemaError` (removed type); missing `agent_id` raises `EventSchemaError`; confidence outside range raises.
+2. `test_event_schema.py` must cover: all five valid event types parse correctly; `AgentSignal` and `AgentFinding` each parse as their correct type; `event_type='ObjectiveTransition'` raises `EventSchemaError` (removed type); missing `agent_id` raises `EventSchemaError`; confidence outside range raises.
 3. `test_promotion.py` must cover: rejected hypothesis → `promote_durable`; operational state → `discard`; low confidence → `return_to_log`; matching existing node → `reinforce`.
 4. `test_graph_schema.py`: decay calculation for each node type at 1 day, 30 days, 365 days.
 5. Achieve 80% line coverage on `shared/`.
@@ -989,9 +989,9 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 **Steps:**
 
 1. Create `tests/integration/conftest.py` with pytest fixtures: `arcadedb_client` (starts ArcadeDB via docker-compose, runs migrations, yields client, tears down), `postgres_url`.
-2. `test_event_log.py`: emit one of each event type, verify cursor-based polling returns correct results, verify `AgentSignal` with `stage='observation'` is returned separately from `stage='finding'`.
+2. `test_event_log.py`: emit one of each event type, verify cursor-based polling returns correct results, verify `AgentSignal` and `AgentFinding` are returned separately with correct fields.
 3. `test_knowledge_graph.py`: create a `ProductStructure` node, traverse from it, verify confidence decays, verify `reinforce_node` resets decay clock.
-4. `test_signal_flow.py`: emit a synthetic high-confidence `stage='observation'` signal; verify the verification agent's `poll_for_observations` picks it up; emit a synthetic `stage='finding'` signal; verify the research/plan agent's `poll_for_findings` picks it up; verify a `CommitmentRecord` is created; verify marking it `approved` causes the implementation agent's `poll_for_approved` to pick it up.
+4. `test_signal_flow.py`: emit a synthetic `AgentSignal`; verify the verification agent's `poll_for_observations` picks it up; emit a synthetic `AgentFinding` with `verdict='confirmed'`; verify the research/plan agent's `poll_for_findings` picks it up; verify a `CommitmentRecord` is created; verify marking it `approved` causes the implementation agent's `poll_for_approved` to pick it up.
 
 **Done when:**
 - All integration tests pass against live ArcadeDB and Postgres Docker containers
@@ -1016,14 +1016,14 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 **Steps:**
 
 1. Create fixture files in `tests/agent/fixtures/` for each agent type.
-2. `test_exploratory_regression.py`: run exploratory agent against a fixture mandate in free-explorer mode, assert output signals have correct schema, `stage='observation'`, confidence in [0,1]. Use `GUARDRAILS_MODE=stub_pass`.
-3. `test_verification_regression.py`: inject a fixture `stage='observation'` signal, run verification agent, assert verdict is one of confirmed/contradicted/inconclusive, assert `stage='finding'` signal is emitted, assert `ModelFamilyError` is not raised for correct family pairing.
-4. `test_research_plan_regression.py`: inject a fixture `stage='finding'` signal, run research/plan agent, assert a `CommitmentRecord` is created with `status='pending_approval'`, assert `CognitiveCheckpoint` contains a non-empty `plan`.
+2. `test_exploratory_regression.py`: run exploratory agent against a fixture mandate in free-explorer mode, assert output signals have correct schema as `AgentSignal`, confidence in [0,1]. Use `GUARDRAILS_MODE=stub_pass`.
+3. `test_verification_regression.py`: inject a fixture `AgentSignal`, run verification agent, assert verdict is one of confirmed/contradicted/inconclusive, assert `AgentFinding` with verdict is emitted, assert `ModelFamilyError` is not raised for correct family pairing.
+4. `test_research_plan_regression.py`: inject a fixture `AgentFinding` with `verdict='confirmed'`, run research/plan agent, assert a `CommitmentRecord` is created with `status='pending_approval'`, assert `CognitiveCheckpoint` contains a non-empty `plan`.
 5. Mark all with `@pytest.mark.agent_regression`.
 
 **Done when:**
 - All three regression test files pass with a valid OpenRouter API key
-- Verification test confirms `stage='finding'` signal is emitted
+- Verification test confirms `AgentFinding` with verdict is emitted
 - Research/plan test confirms plan is produced and commitment is marked `pending_approval`
 - Tests are marked and can be excluded with `-m 'not agent_regression'`
 
@@ -1232,9 +1232,9 @@ Proceed with:
 
 ```
 Colony workers (exploratory cron jobs)
-    ↓ emit AgentSignal stage='observation'
+    ↓ emit AgentSignal
 Verification worker (polls independently)
-    ↓ emit AgentSignal stage='finding'
+    ↓ emit AgentFinding with verdict
 Research/Plan worker (polls independently)
     ↓ creates CommitmentRecord status='pending_approval'
 Human approval UI

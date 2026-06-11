@@ -63,6 +63,7 @@ async def poll_events(
     agent_id: str | None = None,
     objective_id: str | None = None,
     focus_id: str | None = None,
+    domain: str | None = None,
     limit: int = 100,
 ) -> list[dict[str, Any]]:
     """Poll events from ArcadeDB TimeSeries using cursor-based queries.
@@ -76,6 +77,7 @@ async def poll_events(
         agent_id: Optional filter by agent ID
         objective_id: Optional filter by objective ID (deprecated, use focus_id)
         focus_id: Optional filter by focus ID
+        domain: Optional filter by domain
         limit: Maximum number of events to return
 
     Returns:
@@ -96,6 +98,9 @@ async def poll_events(
     if focus_id is not None:
         conditions.append("focus_id = :focus_id")
         params["focus_id"] = focus_id
+    if domain is not None:
+        conditions.append("domain = :domain")
+        params["domain"] = domain
 
     where_clause = " AND ".join(conditions)
     query = (

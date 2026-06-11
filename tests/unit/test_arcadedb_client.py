@@ -265,6 +265,7 @@ def test_poll_events_partition_pruning() -> None:
             since_ts=SAMPLE_DATETIME,
             agent_id="agent-1",
             focus_id="obj-001",
+            domain="performance",
             limit=50,
         )
         body = client.pop_post_call()
@@ -274,10 +275,12 @@ def test_poll_events_partition_pruning() -> None:
         assert "ts > :since_ts" in command
         assert "agent_id = :agent_id" in command
         assert "focus_id = :focus_id" in command
+        assert "domain = :domain" in command
         assert "ORDER BY ts ASC" in command
         assert params["since_ts"] == SAMPLE_DATETIME_STR
         assert params["agent_id"] == "agent-1"
         assert params["focus_id"] == "obj-001"
+        assert params["domain"] == "performance"
         assert body["limit"] == 50
 
     asyncio.run(_run())
