@@ -105,6 +105,8 @@ async def run(config_path: str) -> dict[str, int]:
         checkpoint = record.get("checkpoint")
         if isinstance(checkpoint, dict):
             last_checkpoint = checkpoint.get("checkpoint_at")
+            if isinstance(last_checkpoint, str):
+                last_checkpoint = datetime.fromisoformat(last_checkpoint.replace("Z", "+00:00"))
             if isinstance(last_checkpoint, datetime) and last_checkpoint < cutoff:
                 cid = str(record.get("commitment_id", ""))
                 await update_commitment(db_client, cid, {"status": "stalled"})
