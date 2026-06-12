@@ -59,6 +59,7 @@ async def commitment_get(params: dict[str, Any]) -> dict[str, Any]:
 
 TOOLS = {
     "commitment_update_status": commitment_update_status,
+    "commitment_get": commitment_get,
 }
 
 
