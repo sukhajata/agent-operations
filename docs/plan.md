@@ -673,7 +673,7 @@ This agent earns being a LangGraph graph because the research loop has genuine i
 
 ---
 
-### - [ ] TASK-17: Build implementation agent
+### - [x] TASK-17: Build implementation agent
 
 **Inputs:**
 - TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
@@ -688,38 +688,19 @@ This agent earns being a LangGraph graph because the research loop has genuine i
 
 **Design:**
 
-The implementation agent polls the commitment registry for `CommitmentRecord` entries with `status='approved'`. When it finds one, it reads the plan from the `CognitiveCheckpoint`, executes it step by step, runs tests, and marks the commitment complete or stalled.
+The implementation agent is a one-shot serverless function, not a background worker. Each invocation finds the oldest approved commitment, dispatches it to the coding agent via HTTP, and sets the status to `executing`. The coding agent updates the status to `complete` or `stalled` when it finishes, via its ArcadeDB MCP tool.
 
-This agent must survive restarts mid-execution — `PostgresSaver` checkpointing is mandatory.
+No LangGraph graph — just a linear function. No continuous polling — run it as a cron job or Lambda.
 
-**Steps:**
-
-1. Create `agents/implementation/state.py` with `ImplementationState` TypedDict: `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `plan` (str), `checkpoint` (`CognitiveCheckpoint`), `actions_taken` (list[str]), `files_modified` (list[str]), `test_results` (dict[str, Any] | None), `status` (Literal['in_progress','complete','failed']).
-
-2. Create `agents/implementation/nodes.py` with async node functions:
-   - `poll_for_approved(state)` — queries commitment registry for `status='approved'` commitments. Uses cursor-based polling.
-   - `load_plan(state)` — reads the execution plan from the commitment's `CognitiveCheckpoint`.
-   - `execute_plan(state)` — uses OpenRouter `IMPLEMENTATION` role to execute the plan step-by-step, emitting `AgentAction` events for each file operation. Enforces ACAP boundaries on all operations.
-   - `run_tests(state)` — executes test suite and captures results.
-   - `write_outcome(state)` — marks commitment `complete` on success or `stalled` on failure. Writes final checkpoint.
-   - `promote_findings(state)` — emits `AgentFinding` events for durable knowledge discovered during implementation, for knowledge graph promotion.
-
-3. Create `agents/implementation/graph.py`: `poll_for_approved` → conditional edge (if commitment found → `load_plan` → `execute_plan` → `run_tests` → `write_outcome` → `promote_findings` → loop to `poll_for_approved`, else → `END`). Compile with `PostgresSaver` checkpointer.
-
-4. Create `agents/implementation/__main__.py` entry point.
-
-5. The agent must only process commitments with `status='approved'`. Validate at `load_plan` and raise if status has changed since polling.
+**Outputs:**
+- `agents/implementation/__init__.py`
 
 **Done when:**
-- Agent polls independently without external orchestration
-- `execute_plan` enforces ACAP boundaries — unpermitted operations raise `ACAPViolationError`
-- Agent only processes approved commitments
-- All file operations are logged as `AgentAction` events
-- On completion, commitment status is updated to `complete`
-- On failure, checkpoint is written and commitment is marked `stalled`
-- `PostgresSaver` checkpointer survives a simulated mid-execution restart
-- Agent runs standalone: `python -m agents.implementation`
-- mypy strict passes
+- Finds and dispatches approved commitments one at a time
+- Sets `status='executing'` after successful dispatch to coding agent
+- Marks `status='stalled'` if plan is missing or dispatch fails
+- Coding agent updates status via arcadedb MCP tool on completion
+- Runs as `python -m agents.implementation`
 
 ---
 
