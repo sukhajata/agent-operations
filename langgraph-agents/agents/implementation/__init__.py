@@ -92,7 +92,7 @@ async def run(config_path: str) -> int:
     await emit_validated(
         {
             "event_type": "AgentAction",
-            "ts": datetime.now(UTC).isoformat(),
+            "ts": datetime.now(UTC),
             "agent_id": agent_id,
             "commitment_id": commitment_id,
             "mtp_version": mtp_version,
