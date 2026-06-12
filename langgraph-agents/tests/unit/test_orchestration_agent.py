@@ -49,7 +49,7 @@ def test_run_escalates_stalled_commitments() -> None:
     db_client = MagicMock()
     db_client.execute_query = AsyncMock(side_effect=[
         [],  # approved (empty)
-        [{"commitment_id": "com-stalled", "status": "executing",
+        [{"commitment_id": "com-stalled", "status": "active", "implementation_state": "in_progress",
           "checkpoint": {"checkpoint_at": datetime(2026, 1, 1, tzinfo=UTC)}}],
         [],  # completed (empty)
     ])
