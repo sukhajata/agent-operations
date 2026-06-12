@@ -155,11 +155,11 @@ async def run(config_path: str) -> dict[str, int]:
 
                 if decision.action in ("promote_durable", "promote_medium") and decision.node_type:
                     node = GraphNode(
-                        node_id=f"promoted-{cid}-{claim[:20].replace(' ', '-')}",
+                        node_id=f"promoted-{decision.node_type}-{''.join(ch if ch.isalnum() else '-' for ch in claim.lower())[:40].strip('-')}",
                         node_type=decision.node_type,
                         confidence=confidence,
                         initial_confidence=confidence,
-                        decay_rate=DECAY_RATES.get(decision.node_type, 0.01),
+                        decay_rate=DECAY_RATES[decision.node_type],
                         last_reinforced=datetime.now(UTC),
                         revalidation_required=False,
                     )
