@@ -5,62 +5,67 @@ on:
     branches: [main]
 
 jobs:
-  lint:
+  langgraph-lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: langgraph-agents
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
       - run: uv sync
-        working-directory: langgraph-agents
       - run: uv run ruff check .
-        working-directory: langgraph-agents
 
-  type-check:
+  langgraph-type-check:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: langgraph-agents
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
       - run: uv sync
-        working-directory: langgraph-agents
-      - run: uv run mypy --strict -p agents -p shared -p schema -p config -p tools
-        working-directory: langgraph-agents
+      - run: uv run mypy --strict -p agents -p shared -p schema -p config -p tools -p functions
 
-  test:
+  langgraph-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: langgraph-agents
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
       - run: uv sync
-        working-directory: langgraph-agents
-      - run: uv run pytest tests/unit/ --cov=shared --cov=agents --cov-fail-under=80
-        working-directory: langgraph-agents
+      - run: uv run pytest tests/unit/ --cov=shared --cov=agents --cov=functions --cov-fail-under=80
 
   coding-agent-lint:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coding-agent
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
       - run: uv sync
-        working-directory: coding-agent
       - run: uv run ruff check .
-        working-directory: coding-agent
 
   coding-agent-test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coding-agent
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v3
         with:
           version: "0.5.9"
       - run: uv sync
-        working-directory: coding-agent
       - run: uv run pytest tests/ -v
-        working-directory: coding-agent
