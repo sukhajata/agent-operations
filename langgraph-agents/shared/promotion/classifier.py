@@ -66,7 +66,13 @@ def classify_for_promotion(
         )
 
     # Check for negative knowledge (hypothesis rejected)
-    if "disproved" in reasoning or "contradicted" in claim or "rejected" in reasoning:
+    is_contradicted_finding = isinstance(event, AgentFinding) and event.verdict == "contradicted"
+    if (
+        is_contradicted_finding
+        or "disproved" in reasoning
+        or "contradicted" in claim
+        or "rejected" in reasoning
+    ):
         return PromotionDecision(
             action="promote_durable",
             node_type="InvestigationFinding",
