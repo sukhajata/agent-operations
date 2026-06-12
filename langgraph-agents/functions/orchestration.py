@@ -68,7 +68,11 @@ async def run(config_path: str) -> dict[str, int]:
                         json={"prompt": plan},
                     )
                     response.raise_for_status()
-                await update_commitment(db_client, cid, {"status": "executing"})
+                await update_commitment(
+                    db_client,
+                    cid,
+                    {"status": "active", "implementation_state": "in_progress"},
+                )
                 await emit_validated(
                     {
                         "event_type": "AgentAction",
