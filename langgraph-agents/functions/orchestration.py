@@ -18,6 +18,14 @@ from datetime import UTC, datetime, timedelta
 
 import httpx
 
+from shared.status import (
+    ACTIVE,
+    APPROVED,
+    COMPLETE,
+    IN_PROGRESS,
+    STALLED,
+)
+
 logger = logging.getLogger(__name__)
 
 CODING_AGENT_URL = os.environ.get("CODING_AGENT_URL", "http://localhost:8080")
@@ -46,7 +54,7 @@ async def run(config_path: str) -> dict[str, int]:
     from schema.identity.models import CommitmentRecord
 
     approved = await db_client.execute_query(
-        "SELECT FROM CommitmentRecord WHERE status = 'approved' "
+        f"SELECT FROM CommitmentRecord WHERE status = '{APPROVED}' "
         "ORDER BY created_at ASC LIMIT 1",
     )
     if approved:
@@ -71,7 +79,7 @@ async def run(config_path: str) -> dict[str, int]:
                 await update_commitment(
                     db_client,
                     cid,
-                    {"status": "active", "implementation_state": "in_progress"},
+                    {"status": ACTIVE, "implementation_state": IN_PROGRESS},
                 )
                 await emit_validated(
                     {
@@ -91,15 +99,16 @@ async def run(config_path: str) -> dict[str, int]:
                 logger.info("Dispatched commitment %s to coding agent", cid)
             except httpx.HTTPError as e:
                 logger.error("Failed to dispatch %s: %s", cid, e)
-                await update_commitment(db_client, cid, {"status": "stalled"})
+                await update_commitment(db_client, cid, {"status": STALLED})
         else:
-            await update_commitment(db_client, cid, {"status": "stalled"})
+            await update_commitment(db_client, cid, {"status": STALLED})
             logger.warning("Commitment %s has no plan — marked stalled", cid)
 
     # ── 1. Detect stalled executing commitments ──────────────────────────
     cutoff = datetime.now(UTC) - timedelta(hours=STALL_HOURS)
     stalled = await db_client.execute_query(
-        "SELECT FROM CommitmentRecord WHERE status = 'active' AND implementation_state = 'in_progress'",
+        "SELECT FROM CommitmentRecord "
+        f"WHERE status = '{ACTIVE}' AND implementation_state = '{IN_PROGRESS}'",
     )
     for record in stalled:
         checkpoint = record.get("checkpoint")
@@ -109,13 +118,13 @@ async def run(config_path: str) -> dict[str, int]:
                 last_checkpoint = datetime.fromisoformat(last_checkpoint.replace("Z", "+00:00"))
             if isinstance(last_checkpoint, datetime) and last_checkpoint < cutoff:
                 cid = str(record.get("commitment_id", ""))
-                await update_commitment(db_client, cid, {"status": "stalled"})
+                await update_commitment(db_client, cid, {"status": STALLED})
                 counts["stalled_escalated"] += 1
                 logger.warning("Escalated stalled commitment: %s", cid)
 
     # ── 2. Promote findings from closed commitments ──────────────────────
     completed = await db_client.execute_query(
-        "SELECT FROM CommitmentRecord WHERE status = 'complete'",
+        f"SELECT FROM CommitmentRecord WHERE status = '{COMPLETE}'",
     )
     for record in completed:
         cid = str(record.get("commitment_id", ""))
@@ -154,8 +163,11 @@ async def run(config_path: str) -> dict[str, int]:
                 )
 
                 if decision.action in ("promote_durable", "promote_medium") and decision.node_type:
+                    safe_claim = "".join(
+                        ch if ch.isalnum() else "-" for ch in claim.lower()
+                    )[:40].strip("-")
                     node = GraphNode(
-                        node_id=f"promoted-{decision.node_type}-{''.join(ch if ch.isalnum() else '-' for ch in claim.lower())[:40].strip('-')}",
+                        node_id=f"promoted-{decision.node_type}-{safe_claim}",
                         node_type=decision.node_type,
                         confidence=confidence,
                         initial_confidence=confidence,
