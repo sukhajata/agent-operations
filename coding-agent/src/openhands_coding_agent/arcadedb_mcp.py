@@ -109,6 +109,20 @@ async def _handle_request(req: dict[str, Any]) -> dict[str, Any]:
                     "required": ["commitment_id", "status"],
                 },
             },
+            {
+                "name": "commitment_get",
+                "description": "Read a commitment record by ID from ArcadeDB.",
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "commitment_id": {
+                            "type": "string",
+                            "description": "The commitment ID to look up",
+                        },
+                    },
+                    "required": ["commitment_id"],
+                },
+            },
         ]
         return {
             "jsonrpc": "2.0",
