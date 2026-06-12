@@ -167,6 +167,9 @@ def test_run_dispatches_approved() -> None:
     try:
         with patch(
             "shared.arcadedb.client.ArcadeDBClient", return_value=db_client,
+        ), patch(
+            "shared.config.loader.load_project_config",
+            return_value=MagicMock(mtp=MagicMock(version="1.0")),
         ):
             async def _run() -> None:
                 with patch(
