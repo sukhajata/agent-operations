@@ -183,5 +183,5 @@ def test_run_dispatches_approved() -> None:
         id_mod.update_commitment = original_update
         graph_mod.apply_decay_all = original_decay
 
-    statuses = [c["status"] for c in calls if c["status"] == "executing"]
+    statuses = [c["status"] for c in calls if c["status"] == "active"]
     assert len(statuses) >= 1
