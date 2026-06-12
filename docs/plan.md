@@ -704,7 +704,7 @@ No LangGraph graph — just a linear function. No continuous polling — run it 
 
 ---
 
-### - [ ] TASK-18: Build knowledge promotion logic
+### - [x] TASK-18: Build knowledge promotion logic
 
 **Inputs:**
 - TASK-05 graph schema
@@ -737,7 +737,7 @@ No LangGraph graph — just a linear function. No continuous polling — run it 
 
 ## Phase F — Orchestration
 
-### - [ ] TASK-19: Build orchestration agent
+### - [x] TASK-19: Build orchestration agent
 
 **Inputs:**
 - TASK-08, TASK-18 complete
