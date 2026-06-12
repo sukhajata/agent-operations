@@ -53,7 +53,7 @@ async def run(config_path: str) -> dict[str, int]:
         record = approved[0]
         created_at = record.get("created_at")
         if isinstance(created_at, str):
-            record["created_at"] = datetime.fromisoformat(created_at)
+            record["created_at"] = datetime.fromisoformat(created_at.replace("Z", "+00:00"))
 
         commitment = CommitmentRecord.model_validate(record)
         cid = commitment.commitment_id
