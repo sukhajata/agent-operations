@@ -151,12 +151,13 @@ def test_identity_mandate_crud(arcadedb_client) -> None:
     client: ArcadeDBClient = arcadedb_client
 
     mandate = MandateRecord(
+        mandate_id="integration-test-mandate",
         name="integration-test-mandate",
         domain="integration_testing",
         agent_type="free",
         polling_interval_minutes=60,
         signal_threshold=0.5,
-        is_active=True,
+        active=True,
     )
 
     async def _run() -> None:
