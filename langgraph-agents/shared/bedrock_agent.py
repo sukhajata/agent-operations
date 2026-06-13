@@ -12,7 +12,7 @@ import logging
 try:
     import boto3  # type: ignore[import-untyped]
 except ImportError:
-    boto3 = None  # type: ignore[assignment]
+    boto3 = None  # type: ignore
 
 logger = logging.getLogger(__name__)
 
