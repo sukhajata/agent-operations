@@ -90,8 +90,11 @@ async def run(config_path: str) -> dict[str, int]:
 
             session_id = f"orch-{cid}-{uuid.uuid4().hex[:8]}"
             await invoke_bedrock_agent(CODING_AGENT_ID, session_id, task)
-            await update_commitment(db_client, cid, {"status": EXECUTING})
-            await emit_validated(
+            await update_commitment(
+                db_client,
+                cid,
+                {"status": EXECUTING, "implementation_state": IN_PROGRESS},
+            )
                 {
                     "event_type": "AgentAction",
                     "ts": datetime.now(UTC).isoformat(),
