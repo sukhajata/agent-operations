@@ -31,7 +31,7 @@ fi
 
 echo "Building UI frontend..."
 cd "$UI_DIR"
-npm ci --silent
+npm install --silent
 npm run build -- --outDir dist
 
 echo "Syncing to s3://$BUCKET..."
