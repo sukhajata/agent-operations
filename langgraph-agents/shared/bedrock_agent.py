@@ -9,10 +9,7 @@ from __future__ import annotations
 import asyncio
 import logging
 
-try:
-    import boto3  # type: ignore[import-untyped]
-except ImportError:
-    boto3 = None  # type: ignore
+import boto3  # type: ignore[import-untyped]
 
 logger = logging.getLogger(__name__)
 

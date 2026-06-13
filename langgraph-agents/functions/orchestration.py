@@ -101,6 +101,7 @@ async def run(config_path: str) -> dict[str, int]:
                 cid,
                 {"status": EXECUTING, "implementation_state": IN_PROGRESS},
             )
+            await emit_validated(
                 {
                     "event_type": "AgentAction",
                     "ts": datetime.now(UTC).isoformat(),

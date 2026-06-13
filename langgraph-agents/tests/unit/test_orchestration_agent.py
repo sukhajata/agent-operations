@@ -149,6 +149,7 @@ def test_run_dispatches_approved() -> None:
             "created_at": "2026-06-09T00:00:00Z",
             "domain": "test", "priority_signal": 0.8,
             "checkpoint": checkpoint.model_dump(mode="json"),
+            "repository_url": "https://github.com/test/repo",
         }],
         [],  # stalled
         [],  # completed
