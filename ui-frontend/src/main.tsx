@@ -79,8 +79,8 @@ function App() {
     try {
       const allMessages = [...messages.filter((m) => m.role !== "system"), { role: "user", content: text }];
       const res = await fetch("/api/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ messages: allMessages }) });
+      if (!res.ok) throw new Error(`Chat request failed: ${res.status} ${res.statusText}`);
       const data = await res.json();
-      setMessages((prev) => [...prev, { role: "assistant", content: data.content || "(no response)" }]);
       refresh();
     } catch (e) {
       setMessages((prev) => [...prev, { role: "system", content: `Error: ${e}` }]);
