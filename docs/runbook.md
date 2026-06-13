@@ -18,10 +18,10 @@ docker build -t agent-operations:latest .
 docker tag agent-operations:latest <account>.dkr.ecr.us-east-1.amazonaws.com/agent-operations:latest
 docker push <account>.dkr.ecr.us-east-1.amazonaws.com/agent-operations:latest
 
-# 2. Deploy Lambda functions via SAM/CloudFormation
-cd infra/lambda
-sam deploy --guided
-
+# 2. Deploy infrastructure via Terraform
+cd infra/terraform
+terraform init
+terraform apply
 # 3. Run schema migrations
 aws lambda invoke --function-name agent-operations-migrate --payload '{}' response.json
 
