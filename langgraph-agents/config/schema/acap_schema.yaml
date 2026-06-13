@@ -6,7 +6,7 @@ properties:
     type: string
   agent_type:
     type: string
-    enum: [exploratory, verification, research_plan, implementation, orchestration]
+    enum: [exploratory, verification, orchestration]
   permitted_tools:
     type: array
     items:

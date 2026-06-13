@@ -6,13 +6,10 @@ Agent Operations is a reusable agent platform implementing the ExO 3.0 Intellige
 
 ## 2. Directory Map
 
-- `agents/` — Agent implementations (exploratory, verification, research_plan, implementation, orchestration)
-- `shared/` — Shared libraries (ArcadeDB client, OpenRouter client, ACAP enforcer, event schemas, MCP manager)
-- `schema/` — ArcadeDB schema definitions and migrations (timeseries, graph, identity)
-- `guardrails/` — Guardrail ensemble and safety profiles
-- `config/` — Configuration schemas and reference configurations
-- `infra/` — Infrastructure-as-code for Render.com deployment
-- `tests/` — Test suites (unit, integration, agent regression)
+- `langgraph-agents/` — Primary codebase: agent implementations, shared libraries, schema, config, tools, functions, UI
+- `coding-agent/` — Coding agent implementation (invoked by orchestration to execute approved commitments)
+- `ui-frontend/` — Web frontend for approval UI
+- `infra/` — Infrastructure-as-code for AWS deployment (Terraform)
 - `docs/` — Operational documentation and runbooks
 
 ## 3. Autonomous Modification Rules
@@ -31,7 +28,7 @@ Any code that emits events **MUST** use the canonical schemas in `shared/event_s
 This repository has its own ACAP. Agents working here may not make external network calls except to:
 - OpenRouter API
 - ArcadeDB at `ARCADEDB_URL`
-- Postgres at `POSTGRES_URL`
+- Postgres at `POSTGRES_URL` (LangGraph checkpoint persistence)
 - Langfuse at `LANGFUSE_HOST`
 
 ## 6. Verification Independence

@@ -16,13 +16,13 @@ Commit after each completed task with the task ID as the commit message prefix (
 
 All code must be fully typed. No hardcoded project names, domains, or credentials anywhere in the codebase.
 
-**Deployment target:** Render.com. ArcadeDB as a private service with persistent disk. Each agent type as an independent Render service — exploratory agents as cron jobs, verification/research-plan/implementation agents as background workers triggered by event log polling. Orchestration agent as a thin background worker. PostgreSQL via Render managed Postgres for LangGraph checkpoints (implementation agent only).
+**Deployment target:** AWS Lambda. ArcadeDB as a managed service. All agents deployed as Lambda functions triggered by EventBridge schedules or event log polling. Single Docker image shared across all Lambda functions, with `LAMBDA_HANDLER` environment variable determining which function to run. PostgreSQL for LangGraph checkpoints.
 
 **Architecture principles:**
 
 - Each agent is an independent process. Coordination happens through the shared substrate (ArcadeDB event log and commitment registry), not through a managing process.
 - Colony workers (exploratory agents) are homogeneous — same code, different mandate configuration.
-- Signal flow is: `observation` → verification → `finding` → research/plan → human approval → implementation.
+- Signal flow is: `observation` → verification → `finding` → human approval → coding agent (research → plan → implement → verify → review → PR → report).
 - Each stage agent polls the event log or commitment registry independently. No agent spawns another.
 - The orchestration agent monitors health, escalates failures, and manages knowledge graph promotion. It does not coordinate agent execution.
 
@@ -42,7 +42,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 | B | ArcadeDB Schema | TASK-04 to TASK-07 |
 | C | Shared Libraries | TASK-08 to TASK-13 |
 | D | Schema Migration | TASK-14-M |
-| E | Agent Implementations | TASK-15 to TASK-19 |
+| E | Agent Implementations | TASK-15 to TASK-17, TASK-19 |
 | F | Orchestration | TASK-20 |
 | G | Human Approval UI | TASK-21 |
 | H | Guardrails | TASK-22 |
@@ -79,7 +79,6 @@ All code must be fully typed. No hardcoded project names, domains, or credential
 2. Create the full directory tree:
    - `agents/exploratory/`
    - `agents/verification/`
-   - `agents/research_plan/`
    - `agents/implementation/`
    - `agents/orchestration/`
    - `shared/event_schemas/`
@@ -93,7 +92,7 @@ All code must be fully typed. No hardcoded project names, domains, or credential
    - `schema/migrations/`
    - `guardrails/profiles/`
    - `config/schema/`
-   - `infra/render/`
+    - `infra/lambda/`
    - `tests/unit/`
    - `tests/integration/`
    - `tests/agent/`
@@ -622,54 +621,23 @@ This agent does not receive instructions from any other agent. It discovers work
 
 ---
 
-### - [x] TASK-16: Build research/plan agent
+### - [x] TASK-16: ~~Build research/plan agent~~ (DELETED — responsibility moved to coding agent)
 
-**Inputs:**
-- TASK-08, TASK-09, TASK-10, TASK-11, TASK-12 complete
-- TASK-14-M schema migration complete
+**Status:** DELETED
 
-**Outputs:**
-- `agents/research_plan/__init__.py`
-- `agents/research_plan/nodes.py`
-- `agents/research_plan/state.py`
-- `agents/research_plan/graph.py`
-- `agents/research_plan/__main__.py`
+**Rationale:** The research/plan agent has been removed. Research and planning responsibilities are now handled by the coding agent as part of its workflow: research → plan → implement → verify → review → PR → report. The coding agent's AGENTS.md defines this comprehensive workflow, and the orchestration function dispatches approved findings directly to the coding agent.
 
-**Design:**
+**Original design (no longer implemented):**
+- Poll for `AgentFinding` events with `verdict='confirmed'`
+- Create `CommitmentRecord` and run research loop
+- Produce plan in `CognitiveCheckpoint`
+- Mark commitment `pending_approval`
 
-The research/plan agent polls for `AgentFinding` events with `verdict='confirmed'` where no `CommitmentRecord` yet exists for the finding's `focus_id`. When it finds one, it creates a `CommitmentRecord`, runs a research loop to understand the problem space deeply, and produces a plan. The plan is written to a `CognitiveCheckpoint` on the commitment and the commitment is marked `pending_approval`. A human then reviews the plan before implementation proceeds.
-
-This agent earns being a LangGraph graph because the research loop has genuine internal complexity — it reads the knowledge graph, reads artifacts, reads the event delta, forms hypotheses, checks hypotheses, and may loop back if understanding is insufficient.
-
-**Steps:**
-
-1. Create `agents/research_plan/state.py` with `ResearchPlanState` TypedDict: `finding` (`AgentFinding`), `commitment` (`CommitmentRecord`), `mtp_version` (str), `agent_id` (str), `graph_context` (list[GraphNode]), `artifact_context` (list[str]), `event_delta` (list[dict]), `hypotheses` (list[HypothesisRecord]), `current_understanding` (str | None), `plan` (str | None), `iteration` (int), `max_iterations` (int), `completed` (bool).
-
-2. Create `agents/research_plan/nodes.py` with async node functions:
-   - `poll_for_findings(state)` — queries ArcadeDB `AgentFinding` events for verified findings with no corresponding `CommitmentRecord`. Uses cursor-based polling.
-   - `create_commitment(state)` — creates a `CommitmentRecord` with `status='active'` for the signal's `focus_id`.
-   - `traverse_graph(state)` — queries ArcadeDB graph from the focus domain node outward `max_depth=3`.
-   - `read_artifacts(state)` — uses `MCPConnectionManager` to read structural artifacts identified in `graph_context`.
-   - `read_event_delta(state)` — polls event log for signals in this domain since the last checkpoint timestamp.
-   - `form_understanding(state)` — uses OpenRouter `RESEARCH_PLAN` role to synthesise `graph_context`, `artifact_context`, and `event_delta` into hypotheses and a current best understanding.
-   - `write_checkpoint(state)` — writes `CognitiveCheckpoint` to ArcadeDB. Must always execute even if a previous node raises.
-   - `produce_plan(state)` — uses OpenRouter `RESEARCH_PLAN` role to produce a concrete, step-by-step implementation plan from the current understanding. Writes plan to checkpoint.
-   - `mark_pending_approval(state)` — updates `CommitmentRecord` status to `pending_approval`.
-
-3. Create `agents/research_plan/graph.py`: `poll_for_findings` → conditional edge (if finding → `create_commitment` → `traverse_graph` → `read_artifacts` → `read_event_delta` → `form_understanding` → `write_checkpoint` → conditional edge (if understanding sufficient or max_iterations reached → `produce_plan` → `mark_pending_approval` → loop to `poll_for_findings`, else → loop back to `traverse_graph`), else → `END`).
-
-4. Compile with `PostgresSaver` checkpointer — this agent may run for extended periods and must survive restarts.
-
-5. Create `agents/research_plan/__main__.py` entry point: `run_research_plan_agent(config_path: str) -> None`.
-
-**Done when:**
-- Agent polls independently and creates commitments without external orchestration
-- Research loop traverses graph → artifacts → events → understanding in correct order
-- `write_checkpoint` executes even when a preceding node raises
-- Commitment is marked `pending_approval` with plan in checkpoint before agent moves on
-- `PostgresSaver` checkpointer is configured and survives a simulated restart
-- Agent runs standalone: `python -m agents.research_plan`
-- mypy strict passes
+**Current architecture:**
+- Orchestration function dispatches approved findings to coding agent
+- Coding agent performs research, planning, implementation, verification, review
+- Coding agent creates PR and reports results via ArcadeDB MCP tool
+- Commitment status updated to `complete` or `stalled` by coding agent
 
 ---
 
@@ -681,19 +649,12 @@ This agent earns being a LangGraph graph because the research loop has genuine i
 
 **Outputs:**
 - `agents/implementation/__init__.py`
-- `agents/implementation/nodes.py`
-- `agents/implementation/state.py`
-- `agents/implementation/graph.py`
-- `agents/implementation/__main__.py`
 
 **Design:**
 
 The implementation agent is a one-shot serverless function, not a background worker. Each invocation finds the oldest approved commitment, dispatches it to the coding agent via HTTP, and sets the status to `executing`. The coding agent updates the status to `complete` or `stalled` when it finishes, via its ArcadeDB MCP tool.
 
-No LangGraph graph — just a linear function. No continuous polling — run it as a cron job or Lambda.
-
-**Outputs:**
-- `agents/implementation/__init__.py`
+No LangGraph graph — just a linear function. No continuous polling — run it as a Lambda function triggered by EventBridge.
 
 **Done when:**
 - Finds and dispatches approved commitments one at a time
@@ -787,7 +748,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ## Phase G — Human Approval UI
 
-### - [ ] TASK-20: Build human approval UI
+### - [x] TASK-20: Build human approval UI
 
 **Inputs:**
 - TASK-16 research/plan agent complete (produces `pending_approval` commitments)
@@ -870,7 +831,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ## Phase I — Observability
 
-### - [ ] TASK-22: Configure Langfuse OpenTelemetry export
+### - [x] TASK-22: Configure Langfuse OpenTelemetry export
 
 **Inputs:**
 - Langfuse Cloud account and API keys
@@ -924,7 +885,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ## Phase J — Tests
 
-### - [ ] TASK-24: Write unit tests for shared libraries
+### - [x] TASK-24: Write unit tests for shared libraries
 
 **Inputs:**
 - TASK-08 through TASK-13, TASK-14-M complete
@@ -1033,7 +994,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ## Phase K — CI/CD and Deployment
 
-### - [ ] TASK-28: Configure GitHub Actions CI pipeline
+### - [x] TASK-28: Configure GitHub Actions CI pipeline
 
 **Inputs:**
 - All previous tasks complete
@@ -1063,38 +1024,45 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ---
 
-### - [ ] TASK-29: Configure Render deployment
+### - [x] TASK-29: Configure AWS Lambda deployment
 
 **Inputs:**
-- Render account with API access
+- AWS account with Lambda and EventBridge access
 - All agent code complete
 
 **Outputs:**
-- `infra/render/render.yaml`
-- `Makefile`
+- `lambda_handler.py` — unified Lambda entry point
+- `infra/lambda/template.yaml` — SAM/CloudFormation template
+- `Makefile` — deployment targets
 
 **Steps:**
 
-1. Create `infra/render/render.yaml` as the Render Blueprint defining all services:
-   1. **arcadedb**: `type=private_service`, `image=arcadedata/arcadedb:latest`, persistent disk
-   2. **postgres**: `type=pserv` (managed Postgres), `plan=starter`
-   3. **orchestration**: `type=cron`, `schedule='*/5 * * * *'`, `startCommand='python -m agents.orchestration'`
-   4. **verification**: `type=worker`, `startCommand='python -m agents.verification'`
-   5. **research-plan**: `type=worker`, `startCommand='python -m agents.research_plan'`
-   6. **implementation**: `type=worker`, `startCommand='python -m agents.implementation'`
-   7. **approval-ui**: `type=web`, React build and serve
-   8. **exploratory-{mandate_name}**: `type=cron`, `schedule='0/30 * * * *'`, `startCommand='python -m agents.exploratory --mandate={mandate_name}'` for each configured mandate
-2. All services in the same region.
-3. Makefile targets: `make deploy-all`, `make migrate`, `make logs-{service}`.
+1. Create `lambda_handler.py` that dispatches based on `LAMBDA_HANDLER` environment variable:
+   - `orchestrate` → `functions.orchestration.run`
+   - `explore` → `agents.exploratory.run_agent`
+   - `verify` → `agents.verification.run_agent` (one-shot mode)
+   - `ui` → `ui.server:app` via mangum
+
+2. Create `infra/lambda/template.yaml` defining:
+   - Lambda functions for each agent type
+   - EventBridge rules for scheduled invocations (every 5 minutes for orchestration, every 30 minutes for exploratory)
+   - IAM roles with ArcadeDB and PostgreSQL access
+   - Environment variables for each function
+
+3. Create Makefile targets: `make deploy`, `make invoke-orchestrate`, `make invoke-explore`, `make logs`.
 
 **Done when:**
-- `render.yaml` validates against Render Blueprint schema
+- Lambda functions deploy successfully
+- EventBridge schedules trigger functions at correct intervals
+- Functions can access ArcadeDB and PostgreSQL
+- Logs are visible in CloudWatch
+- `infra/lambda/template.yaml` validates against AWS SAM schema
 - All services are in the same region
 - `make migrate` correctly invokes schema migration
 
 ---
 
-### - [ ] TASK-30: Write deployment and operations runbook
+### - [x] TASK-30: Write deployment and operations runbook
 
 **Inputs:**
 - TASK-28, TASK-29 complete
@@ -1108,7 +1076,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
    1. **Initial deployment** — steps to deploy from scratch
    2. **Required secrets** — table of all environment variables
    3. **Running schema migrations** — when and how
-   4. **Monitoring** — Langfuse traces, Prometheus metrics, Render service logs, active worker dashboard
+    4. **Monitoring** — Langfuse traces, Prometheus metrics, CloudWatch logs, active worker dashboard
    5. **Adding a new exploratory mandate** — YAML structure, observation modes, deployment
    6. **Managing focuses** — how to create, close, and view active focuses in ArcadeDB
    7. **Human approval workflow** — accessing the UI, reviewing plans, approve/reject/defer
@@ -1124,7 +1092,7 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 
 ## Phase L — Reference Configuration
 
-### - [ ] TASK-31: Create reference project configuration
+### - [x] TASK-31: Create reference project configuration
 
 **Inputs:**
 - TASK-13 config loader
@@ -1201,8 +1169,8 @@ The orchestration agent does NOT: spawn other agents, embed subgraphs, route sig
 All 32 tasks complete. The Agent Operations repository is ready for first deployment.
 
 Proceed with:
-1. Creating Render services from `infra/render/render.yaml`
-2. Setting all required environment variables as Render secrets
+1. Creating Lambda functions from `infra/lambda/template.yaml`
+2. Setting all required environment variables as Lambda environment variables
 3. Running `make migrate` to initialise the ArcadeDB schema
 4. Deploying verification, research-plan, and implementation workers
 5. Deploying exploratory cron jobs for each configured mandate
@@ -1226,4 +1194,4 @@ Orchestration agent (5-min cron)
     → knowledge graph promotion, decay, health monitoring, escalation
 ```
 
-**References:** Agent Operations Requirements Document (project); The Event Log and Agent Types (project); AI-Native Organization Blueprint (project); ArcadeDB documentation; Render.com documentation; LangGraph documentation; OpenRouter documentation.
+**References:** Agent Operations Requirements Document (project); The Event Log and Agent Types (project); AI-Native Organization Blueprint (project); ArcadeDB documentation; AWS Lambda documentation; LangGraph documentation; OpenRouter documentation.

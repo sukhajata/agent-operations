@@ -1,0 +1,36 @@
+# ── Terraform variables for Agent Operations ────────────────────────────
+# Copy to terraform.tfvars and fill in your values.
+#
+# Prerequisites:
+#   Before running terraform apply, create these AWS Secrets Manager secrets:
+#
+#   1. agent-ops/arcadedb:
+#      aws secretsmanager create-secret \
+#        --name "agent-ops/arcadedb" \
+#        --secret-string '{"password":"<arcadedb-root-password>"}'
+#
+#   2. agent-ops/postgres:
+#      aws secretsmanager create-secret \
+#        --name "agent-ops/postgres" \
+#        --secret-string '{"password":"<postgres-password>"}'
+#
+#   The secrets are referenced by name via the variables below.
+#   You can change the names if you use different secret names.
+
+# ── Required ────────────────────────────────────────────────────────────
+
+# OpenRouter API key for agent LLM calls. Get one at https://openrouter.ai/keys
+openrouter_api_key   = "sk-or-..."
+
+# Langfuse tracing keys. Get them from your Langfuse project settings.
+langfuse_public_key  = "pk-lf-..."
+langfuse_secret_key  = "sk-lf-..."
+langfuse_host        = "https://cloud.langfuse.com"  # or self-hosted URL
+
+# ── Optional (defaults shown) ───────────────────────────────────────────
+
+# aws_region = "us-east-1"
+
+# Secrets Manager secret names. Change if you used different names above.
+# arcadedb_secret_name = "agent-ops/arcadedb"
+# postgres_secret_name = "agent-ops/postgres"

@@ -8,6 +8,7 @@ dependencies = [
     "langgraph>=0.2",
     "langgraph-checkpoint-postgres>=0.1",
     "openai>=1.0",
+    "boto3>=1.35",
     "httpx>=0.27",
     "pydantic>=2",
     "pydantic-settings>=2",
@@ -18,7 +19,7 @@ dependencies = [
     "jsonschema>=4.26.0",
     "pyyaml>=6.0.3",
     "langchain-openrouter>=0.2.3",
-    "httpx>=0.27",
+    "mangum>=0.17",
 ]
 
 [dependency-groups]
@@ -41,6 +42,8 @@ include = ["agents*", "shared*", "schema*", "config*", "tools*", "functions*"]
 [tool.coverage.run]
 omit = [
     "agents/verification/__init__.py",
-    "agents/research_plan/__init__.py",
 ]
 relative_files = true
+
+[tool.ruff.lint.per-file-ignores]
+"ui/server.py" = ["E501", "ANN201", "ANN202"]

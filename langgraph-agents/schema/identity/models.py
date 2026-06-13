@@ -23,7 +23,7 @@ class ACAPDefinition(BaseModel):
 
     acap_id: str
     agent_type: Literal[
-        "exploratory", "verification", "research_plan", "implementation", "orchestration"
+        "exploratory", "verification", "orchestration"
     ]
     permitted_tools: list[str] = Field(default_factory=list)
     permitted_mcp_connections: list[str] = Field(default_factory=list)
@@ -105,6 +105,28 @@ class CommitmentRecord(BaseModel):
     priority_signal: float = Field(ge=0.0, le=1.0)
     checkpoint: CognitiveCheckpoint | None = None
     assigned_agent_id: str | None = None
+    repository_url: str | None = None
+    base_branch: str | None = None
+    pr_url: str | None = None
+    summary: str | None = None
     implementation_state: Literal[
         "to_do", "pending", "in_progress", "complete", "failed"
     ] = "to_do"
+
+
+class MandateRecord(BaseModel):
+    """Standing mandate for the exploratory agent colony.
+
+    Each mandate defines a domain and a schedule. The exploratory agent
+    reads active mandates from ArcadeDB at startup rather than from
+    hardcoded config files.
+    """
+
+    mandate_id: str
+    name: str
+    domain: str
+    agent_type: Literal["free", "focus"]
+    focus_id: str | None = None
+    polling_interval_minutes: int = 30
+    signal_threshold: float = Field(ge=0.0, le=1.0, default=0.6)
+    active: bool = True

@@ -14,21 +14,21 @@ from __future__ import annotations
 import logging
 import os
 import sys
+import uuid
 from datetime import UTC, datetime, timedelta
-
-import httpx
 
 from shared.status import (
     ACTIVE,
     APPROVED,
     COMPLETE,
+    EXECUTING,
     IN_PROGRESS,
     STALLED,
 )
 
 logger = logging.getLogger(__name__)
 
-CODING_AGENT_URL = os.environ.get("CODING_AGENT_URL", "http://localhost:8080")
+CODING_AGENT_ID = os.environ.get("CODING_AGENT_ID", "")
 STALL_HOURS = 6
 
 
@@ -66,43 +66,52 @@ async def run(config_path: str) -> dict[str, int]:
         commitment = CommitmentRecord.model_validate(record)
         cid = commitment.commitment_id
         checkpoint = commitment.checkpoint
+        repo = commitment.repository_url or ""
+        branch = commitment.base_branch or "main"
+        claim = ""
+        if checkpoint:
+            claim = checkpoint.current_best_understanding or ""
+        domain = commitment.domain
 
-        if checkpoint and checkpoint.plan and checkpoint.plan.strip():
-            plan = checkpoint.plan
-            try:
-                async with httpx.AsyncClient(timeout=httpx.Timeout(3600.0)) as http:
-                    response = await http.post(
-                        f"{CODING_AGENT_URL}/invocations",
-                        json={"prompt": plan},
-                    )
-                    response.raise_for_status()
-                await update_commitment(
-                    db_client,
-                    cid,
-                    {"status": ACTIVE, "implementation_state": IN_PROGRESS},
-                )
-                await emit_validated(
-                    {
-                        "event_type": "AgentAction",
-                        "ts": datetime.now(UTC).isoformat(),
-                        "agent_id": f"orch-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}",
+        task = (
+            f"Commitment ID: {cid}\n"
+            f"Repository: {repo}\n"
+            f"Base Branch: {branch}\n"
+            f"Domain: {domain}\n"
+            f"Claim: {claim}\n\n"
+            f"Research the codebase, plan the implementation, make the changes, "
+            f"create a PR, and report the result back to ArcadeDB."
+        )
+        if checkpoint and checkpoint.plan:
+            task += f"\n\nApproved plan context:\n{checkpoint.plan[:2000]}"
+
+        try:
+            from shared.bedrock_agent import invoke_bedrock_agent
+
+            session_id = f"orch-{cid}-{uuid.uuid4().hex[:8]}"
+            await invoke_bedrock_agent(CODING_AGENT_ID, session_id, task)
+            await update_commitment(db_client, cid, {"status": EXECUTING})
+            await emit_validated(
+                {
+                    "event_type": "AgentAction",
+                    "ts": datetime.now(UTC).isoformat(),
+                    "agent_id": f"orch-{datetime.now(UTC).strftime('%Y%m%d-%H%M%S')}",
+                    "commitment_id": cid,
+                    "mtp_version": "1.0",
+                    "payload": {
+                        "action": "coding_agent_dispatched",
                         "commitment_id": cid,
-                        "mtp_version": "1.0",
-                        "payload": {
-                            "action": "coding_agent_dispatched",
-                            "commitment_id": cid,
-                        },
+                        "repository_url": repo,
+                        "base_branch": branch,
                     },
-                    db_client,
-                )
-                counts["dispatched"] += 1
-                logger.info("Dispatched commitment %s to coding agent", cid)
-            except httpx.HTTPError as e:
-                logger.error("Failed to dispatch %s: %s", cid, e)
-                await update_commitment(db_client, cid, {"status": STALLED})
-        else:
+                },
+                db_client,
+            )
+            counts["dispatched"] += 1
+            logger.info("Dispatched commitment %s to coding agent", cid)
+        except Exception as e:
+            logger.error("Failed to dispatch %s: %s", cid, e)
             await update_commitment(db_client, cid, {"status": STALLED})
-            logger.warning("Commitment %s has no plan — marked stalled", cid)
 
     # ── 1. Detect stalled executing commitments ──────────────────────────
     cutoff = datetime.now(UTC) - timedelta(hours=STALL_HOURS)

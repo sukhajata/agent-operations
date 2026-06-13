@@ -72,50 +72,55 @@ async def run_agent(
         create_search_signals_tool(db_client),
     ]
 
-    async def _emit_finding(**kwargs: object) -> str:
-        from shared.event_schemas.validator import emit_validated
-        finding = dict(kwargs)
-        finding["event_type"] = "AgentFinding"
-        finding["ts"] = datetime.now(UTC).isoformat()
-        finding["agent_id"] = agent_id
-        finding["mtp_version"] = mtp_version
-        await emit_validated(finding, db_client)
-        return "ok"
+    from shared.postgres import create_checkpointer
 
-    graph = build_verification_graph(model, db_client, tools, _emit_finding, signal_threshold)
+    async with create_checkpointer() as checkpointer:
+        async def _emit_finding(**kwargs: object) -> str:
+            from shared.event_schemas.validator import emit_validated
+            finding = dict(kwargs)
+            finding["event_type"] = "AgentFinding"
+            finding["ts"] = datetime.now(UTC).isoformat()
+            finding["agent_id"] = agent_id
+            finding["mtp_version"] = mtp_version
+            await emit_validated(finding, db_client)
+            return "ok"
 
-    logger.info(
-        "Verification agent %s starting (threshold=%.2f, interval=%ds)",
-        agent_id, signal_threshold, polling_interval,
-    )
+        graph = build_verification_graph(
+            model, db_client, tools, _emit_finding, signal_threshold, checkpointer,
+        )
 
-    initial_state: VerificationState = {
-        "signal": None,
-        "originating_model_family": ModelFamily.DEEPSEEK,
-        "mtp_version": mtp_version,
-        "agent_id": agent_id,
-        "focus_id": None,
-        "verdict": None,
-        "verdict_confidence": None,
-        "verdict_rationale": None,
-        "last_cursor": None,
-        "completed": False,
-    }
+        logger.info(
+            "Verification agent %s starting (threshold=%.2f, interval=%ds)",
+            agent_id, signal_threshold, polling_interval,
+        )
 
-    while True:
-        try:
-            result = await graph.ainvoke(initial_state)
-            if result.get("verdict"):
-                logger.info(
-                    "Verdict: %s (%.2f) — %s",
-                    result["verdict"], result.get("verdict_confidence", 0),
-                    result.get("verdict_rationale", "")[:120],
-                )
-            initial_state = cast(VerificationState, result)
-            await asyncio.sleep(polling_interval)
-        except Exception as e:
-            logger.error("Verification agent error: %s", e)
-            await asyncio.sleep(polling_interval)
+        initial_state: VerificationState = {
+            "signal": None,
+            "originating_model_family": ModelFamily.DEEPSEEK,
+            "mtp_version": mtp_version,
+            "agent_id": agent_id,
+            "focus_id": None,
+            "verdict": None,
+            "verdict_confidence": None,
+            "verdict_rationale": None,
+            "last_cursor": None,
+            "completed": False,
+        }
+
+        while True:
+            try:
+                result = await graph.ainvoke(initial_state)
+                if result.get("verdict"):
+                    logger.info(
+                        "Verdict: %s (%.2f) — %s",
+                        result["verdict"], result.get("verdict_confidence", 0),
+                        result.get("verdict_rationale", "")[:120],
+                    )
+                initial_state = cast(VerificationState, result)
+                await asyncio.sleep(polling_interval)
+            except Exception as e:
+                logger.error("Verification agent error: %s", e)
+                await asyncio.sleep(polling_interval)
 
 
 def main() -> None:

@@ -12,3 +12,4 @@ wheels/
 secrets/
 .pytest_cache/
 .nwave/
+.coverage

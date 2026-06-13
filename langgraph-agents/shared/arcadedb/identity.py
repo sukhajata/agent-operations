@@ -14,6 +14,7 @@ from schema.identity.models import (
     CognitiveCheckpoint,
     CommitmentRecord,
     FocusRecord,
+    MandateRecord,
     MTPDocument,
 )
 
@@ -44,8 +45,7 @@ async def load_acap(
 
     Args:
         client: ArcadeDB client instance
-        agent_type: One of exploratory, verification, research_plan,
-            implementation, orchestration
+        agent_type: One of exploratory, verification, orchestration
 
     Returns:
         The ACAPDefinition if found, None otherwise
@@ -216,3 +216,58 @@ def _commitment_params(commitment: CommitmentRecord) -> dict[str, Any]:
     if commitment.checkpoint is not None:
         params["checkpoint"] = commitment.checkpoint.model_dump(mode="json")
     return params
+
+
+async def get_active_mandates(client: ArcadeDBClient) -> list[MandateRecord]:
+    """List all active mandates from ArcadeDB."""
+    records = await client.execute_query(
+        "SELECT FROM MandateRecord WHERE active = true ORDER BY mandate_id ASC"
+    )
+    return [MandateRecord.model_validate(r) for r in records]
+
+
+async def get_all_mandates(client: ArcadeDBClient) -> list[MandateRecord]:
+    """List all mandates (active and inactive)."""
+    records = await client.execute_query(
+        "SELECT FROM MandateRecord ORDER BY mandate_id ASC"
+    )
+    return [MandateRecord.model_validate(r) for r in records]
+
+
+async def create_mandate(client: ArcadeDBClient, mandate: MandateRecord) -> str:
+    """Create a new mandate record."""
+    params = {
+        "mandate_id": mandate.mandate_id,
+        "name": mandate.name,
+        "domain": mandate.domain,
+        "agent_type": mandate.agent_type,
+        "focus_id": mandate.focus_id or "",
+        "polling_interval_minutes": mandate.polling_interval_minutes,
+        "signal_threshold": mandate.signal_threshold,
+        "active": mandate.active,
+    }
+    columns = ", ".join(f"{k} = :{k}" for k in params)
+    await client.execute_command(
+        f"INSERT INTO MandateRecord SET {columns}", params,
+    )
+    return mandate.mandate_id
+
+
+async def update_mandate(
+    client: ArcadeDBClient, mandate_id: str, updates: dict[str, Any],
+) -> None:
+    """Update fields on a mandate record."""
+    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
+    updates["mandate_id"] = mandate_id
+    await client.execute_command(
+        f"UPDATE MandateRecord SET {set_clause} WHERE mandate_id = :mandate_id",
+        updates,
+    )
+
+
+async def delete_mandate(client: ArcadeDBClient, mandate_id: str) -> None:
+    """Delete a mandate record."""
+    await client.execute_command(
+        "DELETE FROM MandateRecord WHERE mandate_id = :mandate_id",
+        {"mandate_id": mandate_id},
+    )
