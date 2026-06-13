@@ -257,11 +257,24 @@ async def update_mandate(
     client: ArcadeDBClient, mandate_id: str, updates: dict[str, Any],
 ) -> None:
     """Update fields on a mandate record."""
-    set_clause = ", ".join(f"{k} = :{k}" for k in updates)
-    updates["mandate_id"] = mandate_id
+    allowed = {
+        "name",
+        "domain",
+        "agent_type",
+        "focus_id",
+        "polling_interval_minutes",
+        "signal_threshold",
+        "active",
+    }
+    safe_updates = {k: v for k, v in updates.items() if k in allowed}
+    if not safe_updates:
+        return
+
+    set_clause = ", ".join(f"{k} = :{k}" for k in safe_updates)
+    safe_updates["mandate_id"] = mandate_id
     await client.execute_command(
         f"UPDATE MandateRecord SET {set_clause} WHERE mandate_id = :mandate_id",
-        updates,
+        safe_updates,
     )
 
 
