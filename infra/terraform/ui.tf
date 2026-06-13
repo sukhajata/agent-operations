@@ -62,7 +62,7 @@ resource "aws_cloudfront_distribution" "ui" {
   }
   # Lambda origin for API
   origin {
-    domain_name = replace(aws_lambda_function_url.ui.function_url, "/^https?://([^/]*).*/", "$1")
+    domain_name = element(split("/", trimprefix(aws_lambda_function_url.ui.function_url, "https://")), 0)
     origin_id   = "lambda-api"
     custom_origin_config {
       http_port              = 443
