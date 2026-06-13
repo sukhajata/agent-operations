@@ -105,7 +105,7 @@ function App() {
   };
 
   const newMandate = () => setEditingMandate({
-    mandate_id: "", name: "", domain: "", agent_type: "free", focus_id: null,
+    mandate_id: crypto.randomUUID(), name: "", domain: "", agent_type: "free", focus_id: null,
     polling_interval_minutes: 30, signal_threshold: 0.6, active: true,
   });
 
