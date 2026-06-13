@@ -8,8 +8,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@copilotkit/react-core": "latest",
-    "@copilotkit/react-ui": "latest",
+    "@copilotkit/react-core": "^1.60.1",
+    "@copilotkit/react-ui": "^1.60.1",
     "react": "^18.3",
     "react-dom": "^18.3"
   },
