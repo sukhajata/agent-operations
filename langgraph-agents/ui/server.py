@@ -6,18 +6,19 @@ approve/reject/defer them, and query system state.
 Start with: uv run uvicorn ui.server:app --port 3001
 """  # noqa: E501 — long JSON schema strings in action definitions
 
-from __future__ import annotations  # noqa: E501 — long JSON schema strings in action definitions
+from __future__ import annotations
 
 import json
 import logging
 import os
 import secrets
+from collections.abc import Awaitable, Callable
 from datetime import datetime
 from typing import Any
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from pydantic import BaseModel
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,10 @@ app.add_middleware(
 
 
 @app.middleware("http")
-async def basic_auth(request: Request, call_next):
+async def basic_auth(
+    request: Request,
+    call_next: Callable[[Request], Awaitable[Response]],
+) -> Response | JSONResponse:
     if request.url.path in ("/ping", "/health"):
         return await call_next(request)
     auth = request.headers.get("Authorization", "")
@@ -44,7 +48,9 @@ async def basic_auth(request: Request, call_next):
         try:
             decoded = base64.b64decode(auth[6:]).decode()
             user, _, pwd = decoded.partition(":")
-            if secrets.compare_digest(user, UI_USERNAME) and secrets.compare_digest(pwd, UI_PASSWORD):
+            match_user = secrets.compare_digest(user, UI_USERNAME)
+            match_pwd = secrets.compare_digest(pwd, UI_PASSWORD)
+            if match_user and match_pwd:
                 return await call_next(request)
         except Exception:
             pass
@@ -131,34 +137,58 @@ async def list_actions():  # noqa: ANN201
         "actions": [
             {
                 "name": "listPendingApprovals",
-                "description": ("List all commitments waiting for human approval. " "Shows domain, plan preview, and understanding."),
+                "description": (
+                    "List all commitments waiting for human approval. "
+                    "Shows domain, plan preview, and understanding."
+                ),
                 "parameters": {"type": "object", "properties": {}},
             },
             {
                 "name": "getSystemStatus",
-                "description": ("Get counts of pending approvals, executing commitments, " "and completed commitments."),
+                "description": (
+                    "Get counts of pending approvals, executing commitments, "
+                    "and completed commitments."
+                ),
                 "parameters": {"type": "object", "properties": {}},
             },
             {
                 "name": "approveCommitment",
-                "description": ("Approve a commitment for implementation. " "The implementation agent will pick it up."),
+                "description": (
+                    "Approve a commitment for implementation. "
+                    "The implementation agent will pick it up."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "commitment_id": {"type": "string", "description": "The commitment ID to approve"},
-                        "comments": {"type": "string", "description": "Optional comments"},
+                        "commitment_id": {
+                            "type": "string",
+                            "description": "The commitment ID to approve",
+                        },
+                        "comments": {
+                            "type": "string",
+                            "description": "Optional comments",
+                        },
                     },
                     "required": ["commitment_id"],
                 },
             },
             {
                 "name": "rejectCommitment",
-                "description": ("Reject a commitment. Provide a reason so the " "research/plan agent can improve it."),
+                "description": (
+                    "Reject a commitment. Provide a reason so the "
+                    "research/plan agent can improve it."
+                ),
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "commitment_id": {"type": "string", "description": "The commitment ID to reject"},
-                        "reason": {"type": "string", "description": "Why the commitment is being rejected"},
+                        "commitment_id": {
+                            "type": "string",
+                            "description": "The commitment ID to reject",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Why the commitment is being rejected",
+                        },
                     },
                     "required": ["commitment_id", "reason"],
                 },
@@ -169,8 +199,14 @@ async def list_actions():  # noqa: ANN201
                 "parameters": {
                     "type": "object",
                     "properties": {
-                        "commitment_id": {"type": "string", "description": "The commitment ID to defer"},
-                        "reason": {"type": "string", "description": "Why the commitment is being deferred"},
+                        "commitment_id": {
+                            "type": "string",
+                            "description": "The commitment ID to defer",
+                        },
+                        "reason": {
+                            "type": "string",
+                            "description": "Why the commitment is being deferred",
+                        },
                     },
                     "required": ["commitment_id", "reason"],
                 },
@@ -250,7 +286,7 @@ async def ping():  # noqa: ANN201
 # ── Mandate management ────────────────────────────────────────────────
 
 @app.get("/api/mandates")
-async def list_mandates():
+async def list_mandates() -> dict[str, object]:
     from shared.arcadedb.identity import get_all_mandates
 
     db = await _get_db()
@@ -262,7 +298,7 @@ async def list_mandates():
 
 
 @app.post("/api/mandates")
-async def create_mandate_ep(body: dict[str, object]):
+async def create_mandate_ep(body: dict[str, object]) -> dict[str, object]:
     from schema.identity.models import MandateRecord
     from shared.arcadedb.identity import create_mandate as _create
 
@@ -276,7 +312,7 @@ async def create_mandate_ep(body: dict[str, object]):
 
 
 @app.put("/api/mandates/{mandate_id}")
-async def update_mandate_ep(mandate_id: str, body: dict[str, object]):
+async def update_mandate_ep(mandate_id: str, body: dict[str, object]) -> dict[str, object]:
     from shared.arcadedb.identity import update_mandate as _update
 
     db = await _get_db()
@@ -288,7 +324,7 @@ async def update_mandate_ep(mandate_id: str, body: dict[str, object]):
 
 
 @app.delete("/api/mandates/{mandate_id}")
-async def delete_mandate_ep(mandate_id: str):
+async def delete_mandate_ep(mandate_id: str) -> dict[str, object]:
     from shared.arcadedb.identity import delete_mandate as _delete
 
     db = await _get_db()
@@ -302,7 +338,7 @@ async def delete_mandate_ep(mandate_id: str):
 # ── Event log ──────────────────────────────────────────────────────────
 
 @app.get("/api/events/recent")
-async def events_recent(limit: int = 50, domain: str = ""):
+async def events_recent(limit: int = 50, domain: str = "") -> dict[str, object]:
     db = await _get_db()
     try:
         from shared.arcadedb.timeseries import poll_events
@@ -356,7 +392,10 @@ CHAT_TOOLS = [
         "type": "function",
         "function": {
             "name": "query_database",
-            "description": "Run a SELECT query against ArcadeDB. Use for questions about commitments, signals, findings, or system state.",
+            "description": (
+                "Run a SELECT query against ArcadeDB. "
+                "Use for questions about commitments, signals, findings, or system state."
+            ),
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -449,7 +488,9 @@ review implementation plans and manage the system.
 Key concepts:
 - Commitments move through: pending → active → pending_approval → approved → executing → complete
 - Commitments in 'pending_approval' need human action (approve/reject/defer)
-- The CommitmentRecord table stores all commitments. Key fields: commitment_id, status, domain, priority_signal, checkpoint (embedded with plan, current_best_understanding, hypotheses_investigated)
+- The CommitmentRecord table stores all commitments. Key fields:
+  commitment_id, status, domain, priority_signal, checkpoint
+  (embedded with plan, current_best_understanding, hypotheses_investigated)
 - AgentFinding events have verdicts (confirmed/contradicted/inconclusive)
 - AgentSignal events are exploratory observations
 

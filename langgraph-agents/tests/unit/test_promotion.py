@@ -112,6 +112,30 @@ def test_reinforce_requires_overlap() -> None:
     assert result.action != "reinforce"
 
 
+def test_overlap_empty_existing_claim() -> None:
+    """Existing node with empty claim string should not overlap."""
+    signal = _mk_signal(claim="memory leak in auth module")
+    existing = [{
+        "node_id": "n1",
+        "node_type": "InvestigationFinding",
+        "claim": "",
+    }]
+    result = classify_for_promotion(signal, existing)
+    assert result.action != "reinforce"
+
+
+def test_overlap_empty_claim_words() -> None:
+    """Signal with whitespace-only claim should not overlap."""
+    signal = _mk_signal(claim="   ")
+    existing = [{
+        "node_id": "n1",
+        "node_type": "InvestigationFinding",
+        "claim": "some claim",
+    }]
+    result = classify_for_promotion(signal, existing)
+    assert result.action != "reinforce"
+
+
 # --- return_to_log ---
 
 

@@ -9,6 +9,11 @@ from __future__ import annotations
 import asyncio
 import logging
 
+try:
+    import boto3  # type: ignore[import-untyped]
+except ImportError:
+    boto3 = None  # type: ignore[assignment]
+
 logger = logging.getLogger(__name__)
 
 TEST_ALIAS_ID = "TSTALIASID"
@@ -16,7 +21,6 @@ TEST_ALIAS_ID = "TSTALIASID"
 
 async def invoke_bedrock_agent(agent_id: str, session_id: str, prompt: str) -> str:
     """Invoke a Bedrock agent and collect the streaming completion."""
-    import boto3  # type: ignore[import-untyped]
 
     def _invoke() -> str:
         client = boto3.client("bedrock-agent-runtime")
