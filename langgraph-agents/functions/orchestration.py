@@ -66,9 +66,15 @@ async def run(config_path: str) -> dict[str, int]:
         commitment = CommitmentRecord.model_validate(record)
         cid = commitment.commitment_id
         checkpoint = commitment.checkpoint
-        repo = commitment.repository_url or ""
+        repo = commitment.repository_url
+        if not repo or not CODING_AGENT_ID:
+            logger.error(
+                "Cannot dispatch commitment %s (missing repository_url or CODING_AGENT_ID)",
+                commitment.commitment_id,
+            )
+            await update_commitment(db_client, commitment.commitment_id, {"status": STALLED})
+            return counts
         branch = commitment.base_branch or "main"
-        claim = ""
         if checkpoint:
             claim = checkpoint.current_best_understanding or ""
         domain = commitment.domain
