@@ -22,6 +22,12 @@ variable "langfuse_host" {
   type        = string
   default     = "https://cloud.langfuse.com"
 }
+variable "ui_password" {
+  description = "Password for the approval UI basic auth"
+  type        = string
+  sensitive   = true
+  default     = ""
+}
 variable "arcadedb_secret_name" {
   description = "Secrets Manager secret name for ArcadeDB password"
   default     = "agent-ops/arcadedb"

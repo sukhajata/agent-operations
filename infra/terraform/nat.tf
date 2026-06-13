@@ -16,13 +16,6 @@ resource "aws_security_group" "nat" {
     cidr_blocks = ["10.0.0.0/16"]
     description = "Allow all VPC-internal traffic to reach NAT"
   }
-  ingress {
-    from_port   = 22
-    to_port     = 22
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
-    description = "SSH access for troubleshooting"
-  }
   egress {
     from_port   = 0
     to_port     = 0

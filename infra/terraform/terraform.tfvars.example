@@ -27,6 +27,9 @@ langfuse_public_key  = "pk-lf-..."
 langfuse_secret_key  = "sk-lf-..."
 langfuse_host        = "https://cloud.langfuse.com"  # or self-hosted URL
 
+# UI basic auth password. Keep this separate from your database passwords.
+ui_password          = "change-me"
+
 # ── Optional (defaults shown) ───────────────────────────────────────────
 
 # aws_region = "us-east-1"

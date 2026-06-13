@@ -44,8 +44,8 @@ The deployment creates: Lambda functions for orchestration, verification, explor
 | `LLM_API_KEY` | Coding agent | LLM API key (OpenRouter) |
 | `UI_USERNAME` | Approval UI | UI basic auth username |
 | `UI_PASSWORD` | Approval UI | UI basic auth password |
-| `CODING_AGENT_URL` | Orchestration | Coding agent service URL |
-| `DATABASE_URL` | All | PostgreSQL URL (LangGraph checkpoints) |
+| `CODING_AGENT_ID` | Orchestration | Bedrock coding agent ID |
+| `POSTGRES_URL` | All | PostgreSQL URL (LangGraph checkpoints) |
 
 ## Running Schema Migrations
 

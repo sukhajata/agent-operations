@@ -10,7 +10,7 @@ resource "aws_lambda_function" "ui" {
     variables = merge({
       LAMBDA_HANDLER    = "ui"
       UI_USERNAME       = "admin"
-      UI_PASSWORD       = local.arcadedb_password
+      UI_PASSWORD       = var.ui_password
       ARCADEDB_URL      = "http://${aws_instance.arcadedb.private_ip}:2480"
       ARCADEDB_USER     = "root"
       ARCADEDB_PASSWORD = local.arcadedb_password
@@ -79,10 +79,7 @@ resource "aws_cloudfront_distribution" "ui" {
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]
-    forwarded_values {
-      query_string = false
-      cookies { forward = "none" }
-    }
+    cache_policy_id        = "658327ea-f89d-4fab-a63d-7e88639e58f6"  # CachingOptimized
   }
   # Route /api/* to Lambda
   ordered_cache_behavior {
@@ -91,10 +88,8 @@ resource "aws_cloudfront_distribution" "ui" {
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods         = ["GET", "HEAD"]
-    forwarded_values {
-      query_string = true
-      cookies { forward = "all" }
-    }
+    cache_policy_id        = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"  # CachingDisabled
+    origin_request_policy_id = "b689b0a8-53d0-40ab-baf2-68738e2966ac"  # AllViewerExceptHostHeader
   }
   restrictions {
     geo_restriction { restriction_type = "none" }

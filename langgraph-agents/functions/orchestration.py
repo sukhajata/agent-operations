@@ -117,7 +117,8 @@ async def run(config_path: str) -> dict[str, int]:
     cutoff = datetime.now(UTC) - timedelta(hours=STALL_HOURS)
     stalled = await db_client.execute_query(
         "SELECT FROM CommitmentRecord "
-        f"WHERE status = '{ACTIVE}' AND implementation_state = '{IN_PROGRESS}'",
+        f"WHERE status IN ('{ACTIVE}', '{EXECUTING}') "
+        f"AND implementation_state = '{IN_PROGRESS}'",
     )
     for record in stalled:
         checkpoint = record.get("checkpoint")
