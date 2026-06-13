@@ -15,27 +15,23 @@ jobs:
         working-directory: ui-frontend
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 18
           cache: npm
           cache-dependency-path: ui-frontend/package-lock.json
-
       - run: npm ci
       - run: npm run build
-
       - uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
           role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
-
       - name: Sync to S3
         run: |
           aws s3 sync dist/ "s3://${{ vars.UI_S3_BUCKET }}" --delete \
             --cache-control "max-age=3600"
-
       - name: Invalidate CloudFront
+        if: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID != 'disabled' }}
         run: |
           aws cloudfront create-invalidation \
             --distribution-id "${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}" \

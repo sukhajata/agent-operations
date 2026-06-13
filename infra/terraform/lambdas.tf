@@ -54,6 +54,7 @@ resource "aws_lambda_function" "orchestrate" {
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.langgraph_agents.repository_url}:latest"
+  architectures = ["arm64"]
   timeout       = 300
   memory_size   = 512
   environment {
@@ -97,6 +98,7 @@ resource "aws_lambda_function" "explore" {
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.langgraph_agents.repository_url}:latest"
+  architectures = ["arm64"]
   timeout       = 300
   memory_size   = 512
   environment {
@@ -139,6 +141,7 @@ resource "aws_lambda_function" "verify" {
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.langgraph_agents.repository_url}:latest"
+  architectures = ["arm64"]
   timeout       = 300
   memory_size   = 1024
   environment {
@@ -176,6 +179,29 @@ resource "aws_lambda_permission" "verify_invoke" {
   principal     = "events.amazonaws.com"
   source_arn    = aws_cloudwatch_event_rule.verify_schedule.arn
 }
+# ── Lambda: migrate (one-shot schema migrations) ────────────────────────
+resource "aws_lambda_function" "migrate" {
+  function_name = "agent-ops-migrate"
+  role          = aws_iam_role.lambda.arn
+  package_type  = "Image"
+  image_uri     = "${aws_ecr_repository.langgraph_agents.repository_url}:latest"
+  timeout       = 120
+  memory_size   = 256
+  environment {
+    variables = merge({
+      ARCADEDB_URL      = "http://${aws_instance.arcadedb.private_ip}:2480"
+      ARCADEDB_DATABASE = "agent_operations"
+      ARCADEDB_USER     = "root"
+      ARCADEDB_PASSWORD = local.arcadedb_password
+      LAMBDA_HANDLER   = "migrate"
+    }, local.langfuse_env)
+  }
+  vpc_config {
+    subnet_ids         = [aws_subnet.private_a.id]
+    security_group_ids = [aws_security_group.lambda_to_arcadedb.id]
+  }
+}
+
 # ── ECR repo for the LangGraph agents image ────────────────────────────
 resource "aws_ecr_repository" "langgraph_agents" {
   name                 = "agent-ops/langgraph-agents"

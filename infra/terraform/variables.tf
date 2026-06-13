@@ -28,6 +28,11 @@ variable "ui_password" {
   sensitive   = true
   default     = ""
 }
+variable "enable_cloudfront" {
+  description = "Enable CloudFront distribution (requires AWS account verification)"
+  type        = bool
+  default     = false
+}
 variable "arcadedb_secret_name" {
   description = "Secrets Manager secret name for ArcadeDB password"
   default     = "agent-ops/arcadedb"

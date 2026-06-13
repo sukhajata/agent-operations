@@ -8,8 +8,8 @@ data "aws_secretsmanager_secret_version" "postgres" {
 }
 
 locals {
-  arcadedb_password = jsondecode(data.aws_secretsmanager_secret_version.arcadedb.secret_string)["password"]
-  postgres_password = jsondecode(data.aws_secretsmanager_secret_version.postgres.secret_string)["password"]
+  arcadedb_password = data.aws_secretsmanager_secret_version.arcadedb.secret_string
+  postgres_password = data.aws_secretsmanager_secret_version.postgres.secret_string
   postgres_url      = "postgresql://agent_ops:${local.postgres_password}@${aws_db_instance.postgres.address}:${aws_db_instance.postgres.port}/agent_operations"
   langfuse_env = {
     LANGFUSE_PUBLIC_KEY = var.langfuse_public_key

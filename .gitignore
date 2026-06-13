@@ -13,3 +13,4 @@ secrets/
 .pytest_cache/
 .nwave/
 .coverage
+.terraform

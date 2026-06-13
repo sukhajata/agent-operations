@@ -1,0 +1,40 @@
+name: Deploy Agents
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "langgraph-agents/**"
+      - "coding-agent/**"
+      - "infra/terraform/Dockerfile.lambda"
+      - ".github/workflows/deploy-agents.yml"
+
+jobs:
+  deploy-agents:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+      - uses: aws-actions/amazon-ecr-login@v2
+        id: ecr
+
+      - name: Build and push langgraph-agents
+        run: |
+          docker build \
+            --platform linux/arm64 --provenance=false \
+            -f infra/terraform/Dockerfile.lambda \
+            -t ${{ steps.ecr.outputs.registry }}/agent-ops/langgraph-agents:latest \
+            .
+          docker push ${{ steps.ecr.outputs.registry }}/agent-ops/langgraph-agents:latest
+
+      - name: Build and push coding-agent
+        run: |
+          docker build \
+            --platform linux/arm64 --provenance=false \
+            -f coding-agent/Dockerfile \
+            -t ${{ steps.ecr.outputs.registry }}/agent-ops/coding-agent:latest \
+            coding-agent
+          docker push ${{ steps.ecr.outputs.registry }}/agent-ops/coding-agent:latest

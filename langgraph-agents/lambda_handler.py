@@ -6,7 +6,9 @@ environment variable determines which function to run.
 Set LAMBDA_HANDLER to one of:
   - orchestrate           (functions.orchestration.run)
   - explore-dispatcher    (reads mandates from ArcadeDB, invokes AgentCore for each)
+  - explore-run           (runs exploratory agent for a single mandate, invoked by AgentCore)
   - verify                (agents.verification.run_agent — one-shot mode)
+  - migrate               (runs pending ArcadeDB schema migrations)
   - ui                    (ui.server:app — FastAPI via mangum)
 """
 
@@ -44,6 +46,28 @@ def handler(event: object, context: object) -> dict[str, object]:
         from agents.exploratory import dispatch_to_agentcore
         results = asyncio.run(dispatch_to_agentcore())
         return {"status": "ok", "mandates_processed": len(results), "results": results}
+
+    if handler_name == "explore-run":
+        from agents.exploratory import run_agent as explore_run
+        mandate_name = os.environ.get("MANDATE_NAME")
+        if not mandate_name:
+            return {"status": "error", "message": "MANDATE_NAME not set"}
+        count = asyncio.run(explore_run(config_path, mandate_name))
+        return {"status": "ok", "signals_emitted": count}
+
+    if handler_name == "migrate":
+        from config.env import settings
+        from shared.arcadedb.client import ArcadeDBClient
+        from schema.migrate import run_migrations
+
+        client = ArcadeDBClient(
+            url=settings.arcadedb_url,
+            database="agent_operations",
+            user=settings.arcadedb_user,
+            password=settings.arcadedb_password,
+        )
+        count = asyncio.run(run_migrations(client))
+        return {"status": "ok", "migrations_applied": count}
 
     if handler_name == "ui":
         from mangum import Mangum

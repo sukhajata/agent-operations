@@ -1,13 +1,20 @@
 # AWS provider
-# deploy with: terraform init && terraform apply -var="openrouter_api_key=..."
+# deploy with: terraform init && terraform apply
 terraform {
+  backend "s3" {
+    bucket         = "agent-ops-terraform-state"
+    key            = "terraform.tfstate"
+    region         = "us-east-1"
+    encrypt        = true
+    use_lockfile   = true
+  }
   required_providers {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
   }
-  required_version = ">= 1.5"
+  required_version = ">= 1.15"
 }
 
 provider "aws" {

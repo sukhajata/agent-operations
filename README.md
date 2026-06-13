@@ -32,36 +32,120 @@ Infrastructure is managed via Terraform in `infra/terraform/` and deploys to AWS
 ### Prerequisites
 
 1. **AWS credentials** configured (via env vars, `~/.aws/credentials`, or IAM role).
-2. **Secrets Manager secrets** created (before `terraform apply`):
+2. **Terraform state backend** (one-time):
+   ```bash
+   aws s3 mb s3://agent-ops-terraform-state --region us-east-1
+   aws s3api put-bucket-versioning \
+     --bucket agent-ops-terraform-state \
+     --versioning-configuration Status=Enabled
+   ```
+   State locking is handled via S3 lock files (`use_lockfile = true`) — no DynamoDB needed.
+3. **Secrets Manager secrets** created (before `terraform apply`):
    ```bash
    aws secretsmanager create-secret \
      --name "agent-ops/arcadedb" \
-     --secret-string '{"password":"<arcadedb-root-password>"}'
+     --secret-string "<arcadedb-password>"
 
    aws secretsmanager create-secret \
      --name "agent-ops/postgres" \
-     --secret-string '{"password":"<postgres-password>"}'
-   ```
-3. Copy `terraform.tfvars.example` to `terraform.tfvars` and fill in your values:
-   ```bash
-   cp infra/terraform/terraform.tfvars.example infra/terraform/terraform.tfvars
+     --secret-string "<postgres-password>"
    ```
 
-### Apply
+### Apply (locally)
 
 ```bash
 cd infra/terraform
 terraform init
-terraform apply -var="openrouter_api_key=..." -var="langfuse_public_key=..." -var="langfuse_secret_key=..."
+terraform apply \
+  -var="openrouter_api_key=$OPENROUTER_API_KEY" \
+  -var="langfuse_public_key=$LANGFUSE_PUBLIC_KEY" \
+  -var="langfuse_secret_key=$LANGFUSE_SECRET_KEY" \
+  -var="ui_password=$UI_PASSWORD"
 ```
 
-### Deploy UI
+All variables are passed via command line — no `terraform.tfvars` needed. On CI, these come from GitHub Secrets automatically.
 
-```bash
-./infra/deploy-ui.sh
-```
+### Deploying via CI/CD
 
-Or push to `main` — the `.github/workflows/deploy-ui.yml` workflow handles it automatically when `ui-frontend/**` changes.
+Three workflows trigger on push to `main`, each scoped to its own paths:
+
+| Workflow | Trigger | What it does |
+|---|---|---|
+| `deploy-infra.yml` | `infra/terraform/**` | `terraform plan` + `apply` |
+| `deploy-agents.yml` | `langgraph-agents/**`, `coding-agent/**` | Builds and pushes Docker images to ECR |
+| `deploy-ui.yml` | `ui-frontend/**` | Builds frontend, syncs to S3, invalidates CloudFront |
+
+**Required GitHub Actions setup:**
+
+1. Create the GitHub OIDC provider (one-time per AWS account):
+   ```bash
+   aws iam create-open-id-connect-provider \
+     --url https://token.actions.githubusercontent.com \
+     --client-id-list sts.amazonaws.com
+   ```
+   The AWS CLI will auto-discover the certificate thumbprint.
+
+2. Create the deploy IAM role:
+   ```bash
+   aws iam create-role \
+     --role-name github-actions-agent-ops \
+     --assume-role-policy-document '{
+       "Version": "2012-10-17",
+       "Statement": [{
+         "Effect": "Allow",
+         "Principal": {"Federated": "arn:aws:iam::<ACCOUNT_ID>:oidc-provider/token.actions.githubusercontent.com"},
+         "Action": "sts:AssumeRoleWithWebIdentity",
+         "Condition": {
+           "StringEquals": {
+             "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
+           },
+           "StringLike": {
+             "token.actions.githubusercontent.com:sub": "repo:sukhajata/agent-operations:*"
+           }
+         }
+       }]
+     }'
+   ```
+   Replace `ACCOUNT_ID` with your AWS account ID. Adjust `sukhajata/agent-operations` to match your repo.
+
+3. Attach the required policies:
+   ```bash
+   aws iam attach-role-policy \
+     --role-name github-actions-agent-ops \
+     --policy-arn arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryPowerUser
+
+   # Custom policy for S3 + CloudFront
+   aws iam put-role-policy \
+     --role-name github-actions-agent-ops \
+     --policy-name s3-cloudfront-deploy \
+     --policy-document '{
+       "Version": "2012-10-17",
+       "Statement": [
+         {
+           "Effect": "Allow",
+           "Action": ["s3:ListBucket", "s3:PutObject", "s3:DeleteObject"],
+           "Resource": ["arn:aws:s3:::agent-ops-ui-*", "arn:aws:s3:::agent-ops-ui-*/*"]
+         },
+         {
+           "Effect": "Allow",
+           "Action": "cloudfront:CreateInvalidation",
+           "Resource": "*"
+         }
+       ]
+     }'
+   ```
+
+4. Set GitHub Actions **variables** (repo Settings → Secrets and variables → Actions → Variables):
+   - `AWS_REGION` → `us-east-1`
+   - `AWS_DEPLOY_ROLE` → `arn:aws:iam::ACCOUNT_ID:role/github-actions-agent-ops`
+   - `UI_S3_BUCKET` → from `terraform output ui_assets_bucket` (after first apply)
+   - `CLOUDFRONT_DISTRIBUTION_ID` → from `terraform output cloudfront_distribution_id` (after first apply)
+
+5. Set GitHub Actions **secrets** (repo Settings → Secrets and variables → Actions → Secrets):
+   - `OPENROUTER_API_KEY`
+   - `LANGFUSE_PUBLIC_KEY`
+   - `LANGFUSE_SECRET_KEY`
+   - `UI_PASSWORD`
 
 ### Resources created
 

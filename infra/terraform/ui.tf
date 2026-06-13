@@ -4,6 +4,7 @@ resource "aws_lambda_function" "ui" {
   role          = aws_iam_role.lambda.arn
   package_type  = "Image"
   image_uri     = "${aws_ecr_repository.langgraph_agents.repository_url}:latest"
+  architectures = ["arm64"]
   timeout       = 30
   memory_size   = 256
   environment {
@@ -47,6 +48,7 @@ resource "aws_s3_bucket_public_access_block" "ui_assets" {
 }
 
 resource "aws_cloudfront_origin_access_control" "s3" {
+  count = var.enable_cloudfront ? 1 : 0
   name                              = "s3-ui-oac"
   origin_access_control_origin_type = "s3"
   signing_behavior                  = "always"
@@ -54,11 +56,12 @@ resource "aws_cloudfront_origin_access_control" "s3" {
 }
 
 resource "aws_cloudfront_distribution" "ui" {
+  count = var.enable_cloudfront ? 1 : 0
   # S3 origin for static files
   origin {
     domain_name              = aws_s3_bucket.ui_assets.bucket_regional_domain_name
     origin_id                = "s3-static"
-    origin_access_control_id = aws_cloudfront_origin_access_control.s3.id
+    origin_access_control_id = aws_cloudfront_origin_access_control.s3[0].id
   }
   # Lambda origin for API
   origin {
@@ -101,7 +104,7 @@ resource "aws_cloudfront_distribution" "ui" {
 }
 
 output "ui_cloudfront_url" {
-  value       = aws_cloudfront_distribution.ui.domain_name
+  value       = var.enable_cloudfront ? aws_cloudfront_distribution.ui[0].domain_name : aws_lambda_function_url.ui.function_url
   description = "CloudFront distribution domain name"
 }
 
@@ -111,6 +114,6 @@ output "ui_assets_bucket" {
 }
 
 output "cloudfront_distribution_id" {
-  value       = aws_cloudfront_distribution.ui.id
+  value       = var.enable_cloudfront ? aws_cloudfront_distribution.ui[0].id : "disabled"
   description = "CloudFront distribution ID for cache invalidation"
 }
