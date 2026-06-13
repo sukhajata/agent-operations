@@ -183,11 +183,7 @@ function App() {
                     <input value={editingMandate.focus_id || ""} onChange={(e) => setEditingMandate({ ...editingMandate, focus_id: e.target.value })} style={{ width: "100%", padding: "0.3rem" }} />
                   </div>
                 )}
-                {(["polling_interval_minutes", "signal_threshold"] as const).map((f) => (
-                  <div key={f} style={{ marginBottom: "0.5rem" }}>
-                    <label style={{ fontSize: "0.8rem", display: "block" }}>{f}</label>
-                    <input type="number" step="0.1" value={editingMandate[f]} onChange={(e) => setEditingMandate({ ...editingMandate, [f]: e.target.value })} style={{ width: "100%", padding: "0.3rem" }} />
-                  </div>
+                <input type="number" step="0.1" value={editingMandate[f]} onChange={(e) => setEditingMandate({ ...editingMandate, [f]: Number(e.target.value) })} style={{ width: "100%", padding: "0.3rem" }} />
                 ))}
                 <div style={{ marginBottom: "0.5rem" }}>
                   <label style={{ fontSize: "0.8rem", display: "flex", alignItems: "center", gap: "0.5rem" }}>
