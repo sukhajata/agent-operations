@@ -13,7 +13,7 @@ AGENTS_MD = SRC_DIR / "AGENTS.md"
 SKILLS_DIR = SRC_DIR / "skills"
 MCP_CONFIG = SRC_DIR / "mcp_config.json"
 
-EXPECTED_SKILLS = {"verify", "review"}
+EXPECTED_SKILLS = {"verify", "review", "research", "plan", "microsoft-agents"}
 
 
 def read(path: Path) -> str:
@@ -28,37 +28,35 @@ def test_agents_md_exists() -> None:
 
 def test_agents_md_execution_mode() -> None:
     content = read(AGENTS_MD)
-    assert "Execute the plan" in content or "execute the plan" in content
+    assert "Research" in content
+    assert "implement" in content
+    assert "PR" in content
 
 
 def test_agents_md_abort_format() -> None:
     content = read(AGENTS_MD)
     assert "ABORT: INSUFFICIENT_INFORMATION" in content
     assert "ABORT: EXECUTION_FAILED" in content
-    # Must update status on abort
-    assert "commitment_update_status" in content
-    assert 'stalled' in content
+    assert "ABORT: NOT_RECOMMENDED" in content
 
 
 def test_agents_md_verify_review() -> None:
     content = read(AGENTS_MD)
     assert "Verify" in content
-    assert "Review" in content
 
 
 def test_agents_md_mcp_tools_section() -> None:
     content = read(AGENTS_MD)
-    assert "MCP Tools" in content
-    assert "context7" in content
-    assert "tavily" in content
-    assert "arcadedb" in content
+    assert "ArcadeDB MCP Tools" in content
+    assert "commitment_get" in content
+    assert "commitment_complete" in content
+    assert "commitment_stall" in content
 
 
 def test_agents_md_completion_section() -> None:
     content = read(AGENTS_MD)
-    assert "commitment_update_status" in content
-    assert "complete" in content
-    assert "stalled" in content
+    assert "commitment_complete" in content
+    assert "commitment_stall" in content
 
 
 def test_agents_md_subagent_delegation() -> None:

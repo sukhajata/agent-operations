@@ -1,0 +1,5 @@
+name: product_structure
+domain: product_structure
+agent_type: free
+polling_interval_minutes: 30
+signal_threshold: 0.5

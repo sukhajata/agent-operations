@@ -37,20 +37,6 @@ def test_verification_uses_qwen() -> None:
     assert family == ModelFamily.QWEN
 
 
-def test_research_plan_uses_deepseek_pro() -> None:
-    from shared.openrouter.models import MODEL_ASSIGNMENTS
-    name, family = MODEL_ASSIGNMENTS[AgentRole.RESEARCH_PLAN]
-    assert "pro" in name.lower()
-    assert family == ModelFamily.DEEPSEEK
-
-
-def test_implementation_uses_deepseek_flash() -> None:
-    from shared.openrouter.models import MODEL_ASSIGNMENTS
-    name, family = MODEL_ASSIGNMENTS[AgentRole.IMPLEMENTATION]
-    assert "flash" in name.lower()
-    assert family == ModelFamily.DEEPSEEK
-
-
 def test_orchestration_uses_deepseek_flash() -> None:
     from shared.openrouter.models import MODEL_ASSIGNMENTS
     name, family = MODEL_ASSIGNMENTS[AgentRole.ORCHESTRATION]

@@ -1,0 +1,13 @@
+acap_id: acap-exploratory
+agent_type: exploratory
+permitted_tools:
+  - web_search
+permitted_mcp_connections: []
+permitted_event_types:
+  - AgentSignal
+  - AgentAction
+forbidden_targets: []
+resource_ceiling:
+  max_tokens_per_run: 50000
+  max_duration_seconds: 120
+  max_mcp_reads_per_run: 5

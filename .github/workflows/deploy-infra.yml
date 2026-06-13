@@ -1,0 +1,40 @@
+name: Deploy Infra
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "infra/terraform/**"
+      - ".github/workflows/deploy-infra.yml"
+
+jobs:
+  deploy-infra:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/terraform
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-east-1' }}
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE }}
+      - run: terraform init
+      - run: |
+          terraform plan \
+            -var="openrouter_api_key=${{ secrets.OPENROUTER_API_KEY }}" \
+            -var="langfuse_public_key=${{ secrets.LANGFUSE_PUBLIC_KEY }}" \
+            -var="langfuse_secret_key=${{ secrets.LANGFUSE_SECRET_KEY }}" \
+            -var="ui_password=${{ secrets.UI_PASSWORD }}" \
+            -out=tfplan
+      - run: terraform apply -auto-approve tfplan
+      - name: Run schema migrations
+        run: |
+          aws lambda invoke \
+            --function-name agent-ops-migrate \
+            --cli-binary-format raw-in-base64-out \
+            /dev/stdout
+        working-directory: infra/terraform

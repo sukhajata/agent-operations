@@ -1,15 +1,13 @@
 #!/usr/bin/env python3
-"""MCP server exposing commitment status updates to the coding agent.
+"""MCP server for the coding agent to report results to ArcadeDB.
 
-Connected tools:
-  - commitment_update_status: mark commitment as complete or failed
-  - commitment_get: read commitment details
+Tools:
+  - commitment_complete: set status='complete', PR URL, and summary
+  - commitment_stall: set status='stalled' with reason
+  - commitment_get: read commitment details (repo URL, branch, finding)
 
-Uses the standard MCP stdio transport. Configured via environment variables:
-  - ARCADEDB_URL (required)
-  - ARCADEDB_DATABASE (default: agent_operations)
-  - ARCADEDB_USER (required)
-  - ARCADEDB_PASSWORD (required)
+Uses MCP stdio transport. Env vars:
+  - ARCADEDB_URL, ARCADEDB_USER, ARCADEDB_PASSWORD
 """
 
 from __future__ import annotations
@@ -39,17 +37,37 @@ async def _execute_command(command: str, params: dict[str, Any]) -> list[dict[st
         return list(response.json().get("result", []))
 
 
-async def commitment_update_status(params: dict[str, Any]) -> dict[str, Any]:
-    """Update a commitment's status. Set to 'complete' on success, 'stalled' on failure."""
+async def commitment_complete(params: dict[str, Any]) -> dict[str, Any]:
+    """Mark commitment complete with PR URL and summary."""
     await _execute_command(
-        "UPDATE CommitmentRecord SET status = :status WHERE commitment_id = :commitment_id",
-        {"commitment_id": params["commitment_id"], "status": params["status"]},
+        "UPDATE CommitmentRecord SET status = :status, pr_url = :pr_url, "
+        "summary = :summary WHERE commitment_id = :commitment_id",
+        {
+            "commitment_id": params["commitment_id"],
+            "status": "complete",
+            "pr_url": params.get("pr_url", ""),
+            "summary": params.get("summary", ""),
+        },
+    )
+    return {"ok": True}
+
+
+async def commitment_stall(params: dict[str, Any]) -> dict[str, Any]:
+    """Mark commitment stalled with a summary."""
+    await _execute_command(
+        "UPDATE CommitmentRecord SET status = :status, summary = :summary "
+        "WHERE commitment_id = :commitment_id",
+        {
+            "commitment_id": params["commitment_id"],
+            "status": "stalled",
+            "summary": params.get("summary", "unknown"),
+        },
     )
     return {"ok": True}
 
 
 async def commitment_get(params: dict[str, Any]) -> dict[str, Any]:
-    """Read a commitment record by ID."""
+    """Read commitment details from ArcadeDB."""
     records = await _execute_command(
         "SELECT FROM CommitmentRecord WHERE commitment_id = :commitment_id LIMIT 1",
         {"commitment_id": params["commitment_id"]},
@@ -57,8 +75,9 @@ async def commitment_get(params: dict[str, Any]) -> dict[str, Any]:
     return records[0] if records else {"error": "not found"}
 
 
-TOOLS = {
-    "commitment_update_status": commitment_update_status,
+TOOLS: dict[str, Any] = {
+    "commitment_complete": commitment_complete,
+    "commitment_stall": commitment_stall,
     "commitment_get": commitment_get,
 }
 
@@ -70,88 +89,100 @@ async def _handle_request(req: dict[str, Any]) -> dict[str, Any]:
 
     if method == "initialize":
         return {
-            "jsonrpc": "2.0",
-            "id": req_id,
+            "jsonrpc": "2.0", "id": req_id,
             "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "arcadedb-commitments", "version": "0.1.0"},
+                "serverInfo": {"name": "arcadedb-commitments", "version": "0.2.0"},
             },
         }
 
     if method == "tools/list":
         tool_schemas = [
             {
-                "name": "commitment_update_status",
+                "name": "commitment_complete",
                 "description": (
-                    "Update the status of a commitment record in ArcadeDB. "
-                    "Must be called exactly once at the end of every execution. "
-                    "The commitment_id is provided in the plan preamble at the "
-                    "start of the task (look for 'Commitment ID: com-...'). "
-                    "Set status to 'complete' if all steps were implemented, "
-                    "verified, and reviewed. Set status to 'stalled' if the "
-                    "plan could not be completed (missing info, blocked, or "
-                    "failed tests after 5 review attempts)."
+                    "Mark a commitment as complete with the PR URL and a summary "
+                    "of what was done. Call this after creating the PR. "
+                    "The commitment_id is provided in the task preamble."
                 ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
                         "commitment_id": {
                             "type": "string",
-                            "description": "The commitment ID from the plan preamble (e.g. 'com-focus-001')",
+                            "description": "Commitment ID from the task preamble",
                         },
-                        "status": {
+                        "pr_url": {
                             "type": "string",
-                            "enum": ["complete", "stalled"],
-                            "description": "'complete' if plan fully executed, 'stalled' if blocked or failed",
+                            "description": "URL of the created pull request",
+                        },
+                        "summary": {
+                            "type": "string",
+                            "description": "Summary of what was changed, how it was verified",
                         },
                     },
-                    "required": ["commitment_id", "status"],
+                    "required": ["commitment_id", "pr_url", "summary"],
+                },
+            },
+            {
+                "name": "commitment_stall",
+                "description": (
+                    "Mark a commitment as stalled when work cannot proceed. "
+                    "Call this if you cannot complete the task."
+                ),
+                "inputSchema": {
+                    "type": "object",
+                    "properties": {
+                        "commitment_id": {"type": "string"},
+                        "summary": {
+                            "type": "string",
+                            "description": "Why the task cannot be completed",
+                        },
+                    },
+                    "required": ["commitment_id", "summary"],
                 },
             },
             {
                 "name": "commitment_get",
-                "description": "Read a commitment record by ID from ArcadeDB.",
+                "description": (
+                    "Read a commitment record from ArcadeDB. Returns the "
+                    "repository_url, base_branch, and finding claim."
+                ),
                 "inputSchema": {
                     "type": "object",
                     "properties": {
-                        "commitment_id": {
-                            "type": "string",
-                            "description": "The commitment ID to look up",
-                        },
+                        "commitment_id": {"type": "string"},
                     },
                     "required": ["commitment_id"],
                 },
             },
         ]
-        return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {"tools": tool_schemas},
-        }
+        return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tool_schemas}}
 
     if method == "tools/call":
         tool_name = params.get("name", "")
         tool_args = params.get("arguments", {})
         if tool_name not in TOOLS:
-            return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}}
+            return {
+                "jsonrpc": "2.0", "id": req_id,
+                "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"},
+            }
         result = await TOOLS[tool_name](tool_args)
         return {
-            "jsonrpc": "2.0",
-            "id": req_id,
-            "result": {
-                "content": [{"type": "text", "text": json.dumps(result)}],
-                "isError": False,
-            },
+            "jsonrpc": "2.0", "id": req_id,
+            "result": {"content": [{"type": "text", "text": json.dumps(result)}], "isError": False},
         }
 
-    return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": f"Unknown method: {method}"}}
+    return {
+        "jsonrpc": "2.0", "id": req_id,
+        "error": {"code": -32601, "message": f"Unknown method: {method}"},
+    }
 
 
 async def main() -> None:
     reader = sys.stdin.buffer
     writer = sys.stdout.buffer
-
     while True:
         line = reader.readline()
         if not line:

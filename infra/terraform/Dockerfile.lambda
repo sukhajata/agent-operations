@@ -1,0 +1,26 @@
+# Lambda-compatible Docker image for Agent Operations
+# All Lambdas share this image; dispatch via LAMBDA_HANDLER env var
+FROM python:3.12-slim-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git curl ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+
+WORKDIR /app
+COPY langgraph-agents/pyproject.toml langgraph-agents/uv.lock ./
+COPY langgraph-agents/agents/ ./agents/
+COPY langgraph-agents/shared/ ./shared/
+COPY langgraph-agents/schema/ ./schema/
+COPY langgraph-agents/config/ ./config/
+COPY langgraph-agents/tools/ ./tools/
+COPY langgraph-agents/functions/ ./functions/
+COPY langgraph-agents/lambda_handler.py ./
+
+RUN uv sync --frozen --no-dev
+
+# Mangum adapter for FastAPI/ASGI Lambda support
+RUN uv pip install mangum awslambdaric
+
+ENTRYPOINT ["uv", "run", "python", "-m", "awslambdaric", "lambda_handler.handler"]

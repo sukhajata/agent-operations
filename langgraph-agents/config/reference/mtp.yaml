@@ -1,0 +1,10 @@
+mtp_id: mtp-v1
+version: "1.0"
+purpose: Continuously improve the quality and reliability of the software systems we operate
+constraints:
+  - Never expose customer data
+  - Never deploy to production without a checkpoint
+  - Escalate all changes exceeding $1000 resource cost
+intent_description: We exist to make software that works well and gets better over time.
+created_at: "2026-06-09T00:00:00Z"
+created_by: admin
