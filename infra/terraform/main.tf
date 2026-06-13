@@ -111,3 +111,16 @@ resource "aws_security_group" "arcadedb" {
   }
   tags = { Name = "arcadedb" }
 }
+
+resource "aws_security_group" "postgres" {
+  name   = "postgres"
+  vpc_id = aws_vpc.main.id
+  ingress {
+    from_port       = 5432
+    to_port         = 5432
+    protocol        = "tcp"
+    security_groups = [aws_security_group.lambda_to_arcadedb.id]
+    description     = "Allow Lambda ENIs to reach Postgres"
+  }
+  tags = { Name = "agent-ops-postgres-sg" }
+}
